@@ -1,1 +1,4 @@
 *.[bB][aA][kK]
+*.class
+*.obj
+*.exe
