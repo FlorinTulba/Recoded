@@ -1,4 +1,4 @@
-# Union-Find data structure implemented in various languages
+### Union-Find data structure implemented in various languages
 
 * * *
 
