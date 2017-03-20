@@ -8,7 +8,7 @@ The problem can serve also for refreshing image processing and parallelism techn
 
 These are the tested figures:
 
-![](TestFigures/count6Shapes.png)![](TestFigures/count9Shapes.png)![](TestFigures/count100Shapes.png)![](TestFigures/count673Shapes.png)
+![](TestFigures/count6shapes.png)![](TestFigures/count9shapes.png)![](TestFigures/count100Shapes.png)![](TestFigures/count673shapes.png)
 
 * * *
 
