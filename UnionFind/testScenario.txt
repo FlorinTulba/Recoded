@@ -1,0 +1,16 @@
+# N - the number of elements
+# They are initially separated entities
+10
+
+# The list of connections to be performed
+# The obtained sets are presented after each new connection
+# The indices of the elements from below are 0-based
+0 3
+4 5
+1 9
+2 8
+7 4
+9 0
+7 8
+1 6
+0 5

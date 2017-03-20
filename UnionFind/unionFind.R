@@ -6,16 +6,6 @@
 #
 
 
-n <- 10							# items count
-ids <- 1:n 						# items' ids
-ancestors <- ids				# initial items are also their own root ancestors
-
-# The rank of an item is the depth of a subtree rooted on this item (some children might migrate closer to the root of this item)
-ranks <- rep(as.integer(0), n)	# initial items' ranks are all 0
-
-# data frame with columns ancestor, rank
-uf <- data.frame(Ancestor=ancestors, Rank=ranks)
-
 # Find parent operation
 parentOf <- function(uf, id) {
 	ufTemp <- uf
@@ -31,6 +21,8 @@ parentOf <- function(uf, id) {
 
 # Connect id1 & id2
 join <- function(uf, id1, id2) {
+    # the decrements ensure same output as in programming languages with 0-based indexing
+    cat(sprintf('%3d - %3d :', id1-1L, id2-1L))
 	ufTemp <- uf
 	id1 <- parentOf(ufTemp, id1)
 	id2 <- parentOf(ufTemp, id2)
@@ -56,10 +48,11 @@ join <- function(uf, id1, id2) {
 strUf <- function(uf) {
 	mapping <- sapply(ids, function(id) c(ParentId=parentOf(uf, id), Id=id))
 	mapping <- mapping[,order(mapping['ParentId',])]
-	cat(length(unique(mapping[1,])), 'groups:')
+	cat(sprintf("%3d", length(unique(mapping[1,]))), 'groups:')
 	i <- 1; parentId <- mapping['ParentId', i]
 	repeat {
-		cat(parentId, '{', mapping['Id', i], '')
+	    # the decrements ensure same output as in programming languages with 0-based indexing
+		cat(parentId-1L, '{', mapping['Id', i]-1L, '')
 		repeat {
 			i <- i + 1
 			if(i > n)
@@ -69,7 +62,8 @@ strUf <- function(uf) {
 				parentId <- newParentId
 				break
 			}
-			cat(mapping['Id', i], '')
+			# the decrements ensure same output as in programming languages with 0-based indexing
+			cat(mapping['Id', i]-1L, '')
 		}
 		cat('}')
 		if(i > n)
@@ -78,24 +72,59 @@ strUf <- function(uf) {
 	}
 }
 
-cat('Initial uf:\n')
-cat(strUf(uf), '\n')
+nextRelevantLine <- function(conn) {
+    while(length(line <- readLines(conn, n = 1L, warn = FALSE))) {
+        if(nchar(line) > 0 && substring(line, 1, 1) != '#')
+            break
+    }
+    line
+}
 
-join(uf, 1, 4)
-cat(strUf(uf), '\n')
-join(uf, 5, 6)
-cat(strUf(uf), '\n')
-join(uf, 2, 10)
-cat(strUf(uf), '\n')
-join(uf, 3, 9)
-cat(strUf(uf), '\n')
-join(uf, 8, 5)
-cat(strUf(uf), '\n')
-join(uf, 10, 1)
-cat(strUf(uf), '\n')
-join(uf, 8, 9)
-cat(strUf(uf), '\n')
-join(uf, 2, 7)
-cat(strUf(uf), '\n')
-join(uf, 1, 6)
-cat(strUf(uf), '\n')
+conn <- file('testScenario.txt', 'r')
+
+if(length(line <- nextRelevantLine(conn)) > 0) {
+    n <- as.integer(line)			# items count
+    if(n < 0L) {
+        cat("Items count should be >= 0!\n")
+    } else {
+        if(n < 2L)
+            cat('Note that this problem makes sense only for at least 2 elements!\n')
+
+        ids <- 1L:n 					# items' ids
+        ancestors <- ids				# initial items are also their own root ancestors
+
+        # The rank of an item is the depth of a subtree rooted on this item (some children might migrate closer to the root of this item)
+        ranks <- rep(0L, n)	# initial items' ranks are all 0
+
+        # data frame with columns ancestor, rank
+        uf <- data.frame(Ancestor=ancestors, Rank=ranks)
+        cat(' Initially:'); cat(strUf(uf), '\n')
+
+        noIssues <- TRUE
+        while(length(line <- nextRelevantLine(conn)) > 0) {
+            tokens <- strsplit(line, ' ', fixed = TRUE)[[1]]
+            if(length(tokens) != 2) {
+                cat(sprintf('Line "%s" contains less/more than 2 items!\n', line))
+                noIssues <- FALSE
+                break
+            }
+
+            idx1 <- as.integer(tokens[1])
+            idx2 <- as.integer(tokens[2])
+            if(idx1 < 0 || idx2 < 0 || idx1 >= n || idx2 >= n) {
+                cat(sprintf('Line "%s" contains invalid indices!\n', line))
+                noIssues <- FALSE
+                break
+            }
+
+            # the increments ensure 1-based indexing as required in R
+            join(uf, idx1+1L, idx2+1L); cat(strUf(uf), '\n')
+        }
+        if(noIssues)
+            cat('No other pairs to connect in this scenario!')
+    }
+} else {
+    cat("Couldn't read the items count!\n")
+}
+
+close(conn)

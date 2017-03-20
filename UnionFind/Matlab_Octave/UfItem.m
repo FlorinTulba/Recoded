@@ -1,5 +1,4 @@
 %{
-
     Part of the implementation of the UnionFind data structure described here:
         https://en.wikipedia.org/wiki/Disjoint-set_data_structure
 

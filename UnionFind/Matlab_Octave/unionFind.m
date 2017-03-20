@@ -1,5 +1,4 @@
 %{
-
     Part of the implementation of the UnionFind data structure described here:
         https://en.wikipedia.org/wiki/Disjoint-set_data_structure
 
@@ -8,24 +7,28 @@
 
 clear all; clc
 
-uf = Uf(10);
-fprintf('Initial uf is:\n%s\n', uf.str());
+fd = fopen('../testScenario.txt');
 
-uf.join(1, 4);
-fprintf('%s\n', uf.str());
-uf.join(5, 6);
-fprintf('%s\n', uf.str());
-uf.join(2, 10);
-fprintf('%s\n', uf.str());
-uf.join(3, 9);
-fprintf('%s\n', uf.str());
-uf.join(8, 5);
-fprintf('%s\n', uf.str());
-uf.join(10, 1);
-fprintf('%s\n', uf.str());
-uf.join(8, 9);
-fprintf('%s\n', uf.str());
-uf.join(2, 7);
-fprintf('%s\n', uf.str());
-uf.join(1, 6);
-fprintf('%s\n', uf.str());
+line = nextRelevantLine(fd);
+if ischar(line)
+    n = sscanf(line, '%d');
+    if n < 0
+        disp('Items count must be >= 0!')
+    else
+        uf = Uf(n);
+        if n < 2
+            disp('Note that this problem makes sense only for at least 2 elements!')
+        end
+        line = nextRelevantLine(fd);
+        while ischar(line)
+            indices = sscanf(line, '%d%d');
+            idx1 = indices(1); idx2 = indices(2);
+            uf.join(idx1+1, idx2+1); % Matlab needs 1-based indexing
+            line = nextRelevantLine(fd);
+        end
+    end
+else
+    disp('Could not read the items count!')
+end
+
+fclose(fd);

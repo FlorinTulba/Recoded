@@ -17,8 +17,16 @@ class UfItem:
 class UF:
 	''' The UnionFind class '''
 	def __init__(self, itemsCount):
+		if itemsCount < 0:
+			print('The items count must be >= 0!')
+
 		self.items = [UfItem(i) for i in range(itemsCount)]	# the managed items
 		self.groups = itemsCount							# current count of the groups formed from the items
+		
+		print(" Initially:{}".format(self))
+
+		if itemsCount < 2:
+			print("Note that this problem makes sense only for at least 2 elements!")
 
 	def __repr__(self):
 		mapping = {}
@@ -29,11 +37,14 @@ class UF:
 			else:
 				mapping[parentId] = [i]
 
-		result = '{} groups: {}'.format(self.groups, mapping)
+		result = '{:3d} groups: {}'.format(self.groups, mapping)
 		return result
 
 	def parentOf(self, id):
 		''' Find parent operation '''
+		if id < 0 or id >= len(self.items):
+			return None
+
 		parentId = self.items[id].ancestor
 		while id != parentId:
 			self.items[id].ancestor = self.items[parentId].ancestor
@@ -43,8 +54,13 @@ class UF:
 
 	def join(self, id1, id2):
 		''' Connect id1 & id2 '''
+		print("{:3d} - {:3d} :".format(id1, id2), end='')
 		id1, id2 = self.parentOf(id1), self.parentOf(id2)
+		if id1 == None or id2 == None:
+			print('Invalid indices!')
+
 		if id1 == id2:
+			print(self)
 			return
 
 		rank1, rank2 = self.items[id1].rank, self.items[id2].rank
@@ -58,36 +74,38 @@ class UF:
 
 		self.groups -= 1
 
-if __name__ == "__main__":
-	uf = UF(10)
-	print("Initial uf:")
-	print(uf)
-#	uf.join(2, 1)
-#	uf.join(0, 4)
-#	uf.join(0, 5)
-#	uf.join(6, 3)
-#	uf.join(7, 4)
-#	uf.join(9, 4)
-#	uf.join(2, 6)
-#	uf.join(2, 5)
-#	uf.join(1, 8)
-#	print(uf)
+		print(self)
 
-	uf.join(0, 3)
-	print(uf)
-	uf.join(4, 5)
-	print(uf)
-	uf.join(1, 9)
-	print(uf)
-	uf.join(2, 8)
-	print(uf)
-	uf.join(7, 4)
-	print(uf)
-	uf.join(9, 0)
-	print(uf)
-	uf.join(7, 8)
-	print(uf)
-	uf.join(1, 6)
-	print(uf)
-	uf.join(0, 5)
-	print(uf)
+def nextRelevantLine(f):
+	''' Reads from the scenario file the next non-empty and non-comment line '''
+	line = f.readline()
+	while line:
+		if not line[0] in "\r\n#":	# Ignore empty lines or comments (lines starting with '#')
+			return line
+		line = f.readline()
+
+	return None
+
+if __name__ == "__main__":
+	f = open('testScenario.txt', 'r')
+	line = nextRelevantLine(f)
+	if line != None:
+		n = int(line)
+		uf = UF(n)
+		line = nextRelevantLine(f)
+		while line != None:
+			tokens = line.split()
+			if len(tokens) != 2:
+				print("Line {} contains less/more than 2 items!".format(line))
+				break
+			idx1, idx2 = int(tokens[0]), int(tokens[1])
+			uf.join(idx1, idx2)
+
+			line = nextRelevantLine(f)
+
+		if line == None:
+			print("No other pairs to connect in this scenario!")			
+	else:
+		print("Couldn't read the items count!")
+
+	f.close()

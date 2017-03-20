@@ -2,6 +2,8 @@
 % Implementation of the UnionFind data structure described here:
 % 		https://en.wikipedia.org/wiki/Disjoint-set_data_structure
 %
+% Tested with SWI-Prolog 7.2.3
+%
 % @2017 Florin Tulba (florintulba@yahoo.com)
 %
 
@@ -37,7 +39,7 @@ listSuffix(List, N, Suffix) :-
     	)
 	).
 
-% parentOf(Ancestors, Id, UpdatedAncestors, ParentId)
+% Returns the parent (ParentId) of Id, based on the known Ancestors. It updates these ancestors.
 parentOf(Ancestors, Id, UpdatedAncestors, ParentId) :-
 	nth0(Id, Ancestors, ParentId1),
 	(Id =:= ParentId1 ->
@@ -53,10 +55,13 @@ parentOf(Ancestors, Id, UpdatedAncestors, ParentId) :-
 		)
 	).
 
-% join(Id1, Id2, PrevAncestors, PrevRanks, NextAncestors, NextRanks)
+% Unites Id1 & Id2 based on PrevAncestors & PrevRanks. The updated ancestors and ranks are returned.
 join(Id1, Id2, PrevAncestors, PrevRanks, NextAncestors, NextRanks) :-
-	parentOf(PrevAncestors, Id1, PrevAncestors_, ParentId1),
-	parentOf(PrevAncestors_, Id2, NextAncestors_, ParentId2),
+	writef('%3r - %3r : ', [Id1, Id2]),
+	(parentOf(PrevAncestors, Id1, PrevAncestors_, ParentId1) -> true ;
+		(writef('The parent of %d was not found!\n', [Id1]), fail)),
+	(parentOf(PrevAncestors_, Id2, NextAncestors_, ParentId2) -> true ;
+		(writef('The parent of %d was not found!\n', [Id2]), fail)),
 	(
 		(
 			ParentId1 =:= ParentId2,
@@ -98,14 +103,15 @@ join(Id1, Id2, PrevAncestors, PrevRanks, NextAncestors, NextRanks) :-
 		)
 	).
 
-% show(Ancestors)
+% Displays the content of the UnionFind data structure - the ancestors together with their descendants
 show(Ancestors) :-
 	findall(membership(Id, ParentId), parentOf(Ancestors, Id, _, ParentId), Membership),
 	setof([ParentId, Members], setof(Id, member(membership(Id, ParentId), Membership), Members), Mapping),
 	length(Mapping, Groups),
-	writef('%d groups: %w\n', [Groups, Mapping]).
+	writef('%3r groups: %w\n', [Groups, Mapping]).
 
-% initUF(N, Ancestors, Ranks)
+% initUF(N, Ancestors, Ranks) - initializes the UnionFind data structure with the elements count (N).
+% Returns the initial Ancestors & Ranks.
 initUF(0, [], []) :-
 	!.
 initUF(N, Ancestors, [0 | NextRanks]) :-
@@ -113,27 +119,79 @@ initUF(N, Ancestors, [0 | NextRanks]) :-
 	initUF(N_1, NextAncestors, NextRanks),
 	append(NextAncestors, [N_1], Ancestors).
 
-checkUF :-
-	N is 10,
-	initUF(N, Ancestors0, Ranks0),
-	writeln('Initial uf:'),
-	show(Ancestors0),
-	join(0, 3, Ancestors0, Ranks0, Ancestors1, Ranks1),
-	show(Ancestors1),
-	join(4, 5, Ancestors1, Ranks1, Ancestors2, Ranks2),
-	show(Ancestors2),
-	join(1, 9, Ancestors2, Ranks2, Ancestors3, Ranks3),
-	show(Ancestors3),
-	join(2, 8, Ancestors3, Ranks3, Ancestors4, Ranks4),
-	show(Ancestors4),
-	join(7, 4, Ancestors4, Ranks4, Ancestors5, Ranks5),
-	show(Ancestors5),
-	join(9, 0, Ancestors5, Ranks5, Ancestors6, Ranks6),
-	show(Ancestors6),
-	join(7, 8, Ancestors6, Ranks6, Ancestors7, Ranks7),
-	show(Ancestors7),
-	join(1, 6, Ancestors7, Ranks7, Ancestors8, Ranks8),
-	show(Ancestors8),
-	join(0, 5, Ancestors8, Ranks8, Ancestors9, _),
-	show(Ancestors9),
-	!.
+
+
+% Fails for lines from the test scenario file that are empty or comments
+relevantLine(LineStr) :-
+	\+ LineStr = "",						% Ignore empty lines
+	\+ string_code(1, LineStr, 35).			% Ignore lines containing comments (they start with '#', which has 35 as char code)
+
+% Provides the trimmed version of the next non-empty and non-comment line from the test scenario file.
+% Fails on EOF.
+skipUselessLines(Fd, Line) :-
+    \+ at_end_of_stream(Fd),
+    read_string(Fd, '\n', '\r\t ', _, LineStr),	% Trims the line from Spaces, Tabs and Carriage Returns
+    ((relevantLine(LineStr), !, Line = LineStr) 
+    	;
+    skipUselessLines(Fd, Line)).
+
+% Reads the items count (N) from the test scenario file
+readItemsCount(Fd, N) :-
+	skipUselessLines(Fd, Line),
+    split_string(Line, ' \t', '', [_]),		% expect a single token on the line
+	number_string(N, Line),
+	(N < 2 -> writeln('Note that this problem makes sense only for at least 2 elements!') ; true).
+
+% Executes all join operations requested in the test scenario file
+processUnions(Fd, Ancestors, Ranks) :-
+	skipUselessLines(Fd, Line) ->
+	(
+		split_string(Line, ' \t', '', Tokens),
+		(Tokens = [Idx1str, Idx2str] ->
+			(
+				(number_string(Idx1, Idx1str), integer(Idx1),
+				number_string(Idx2, Idx2str), integer(Idx2)) ->
+					(
+						join(Idx1, Idx2, Ancestors, Ranks, Ancestors1, Ranks1), show(Ancestors1),
+						processUnions(Fd, Ancestors1, Ranks1)
+					)
+						;
+					(
+						writef('Line "%w" contains non-integer value(s)!\n', [Line]),
+						fail
+					)
+			)
+				;
+			(
+				writef('Line "%w" contains less/more than 2 items!\n', [Line]),
+				fail
+			)
+		)
+	)
+		;
+	writeln('No other pairs to connect in this scenario!').
+
+
+
+% Predicate for launching the program
+main :-
+	open('testScenario.txt', read, Fd),
+	(readItemsCount(Fd, N) ->
+		(
+			ReadItemsCount = true,
+			initUF(N, Ancestors, Ranks), write(' Initially: '), show(Ancestors),
+			(processUnions(Fd, Ancestors, Ranks) ->
+				ProcessedUnions = true
+					;
+				ProcessedUnions = fail
+			)
+		)
+			;
+		(
+			ReadItemsCount = fail,
+			writeln("Couldn't read the items count!")
+		)
+	),
+	close(Fd),
+	ReadItemsCount,
+	ProcessedUnions.
