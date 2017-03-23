@@ -39,7 +39,7 @@ mentioned 88 value (90-2).
 %}
 [H,T,R] = hough(Ired, 'RhoResolution',.5, 'Theta',-90:0.5:87.5);
 log_1pH = log(1+H); maxLog_1pH = max(log_1pH(:));
-subplot(222), imshow(maxLog_1pH - log_1pH, [], 'XData',T, 'YData',R, 'InitialMagnification','fit')
+subplot(222), imshow(maxLog_1pH - log_1pH, [0 maxLog_1pH], 'XData',T, 'YData',R, 'InitialMagnification','fit')
 xlabel('\theta'), ylabel('r'), title('Hough Transform'), axis on, axis normal, hold on
 
 % Setting here a value around 0.125*max(H(:)) as threshold might help
