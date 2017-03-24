@@ -8,6 +8,13 @@
 #
 
 
+import sys
+
+# 'util.py' from '../common' contains the necessary function 'nextRelevantLine'
+sys.path.append('../common')
+from util import nextRelevantLine
+
+
 class UfItem:
 	''' Data specific for each item of the Union Find '''
 	def __init__(self, id):
@@ -75,16 +82,6 @@ class UF:
 		self.groups -= 1
 
 		print(self)
-
-def nextRelevantLine(f):
-	''' Reads from the scenario file the next non-empty and non-comment line '''
-	line = f.readline()
-	while line:
-		if not line[0] in "\r\n#":	# Ignore empty lines or comments (lines starting with '#')
-			return line
-		line = f.readline()
-
-	return None
 
 if __name__ == "__main__":
 	f = open('testScenario.txt', 'r')

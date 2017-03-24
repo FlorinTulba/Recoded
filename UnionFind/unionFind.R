@@ -72,16 +72,9 @@ strUf <- function(uf) {
 	}
 }
 
-nextRelevantLine <- function(conn) {
-    while(length(line <- readLines(conn, n = 1L, warn = FALSE))) {
-        if(nchar(line) > 0 && substring(line, 1, 1) != '#')
-            break
-    }
-    line
-}
-
 conn <- file('testScenario.txt', 'r')
 
+source('../common/util.R') # for loading 'nextRelevantLine'
 if(length(line <- nextRelevantLine(conn)) > 0) {
     n <- as.integer(line)			# items count
     if(n < 0L) {

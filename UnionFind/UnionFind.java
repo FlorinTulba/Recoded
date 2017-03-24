@@ -4,12 +4,21 @@
 
 	Tested with Java 8
 
+	Uses '../common/RelevantLines.java', so:
+
+	- compile with:  javac -cp "../common/" UnionFind.java 
+		(this will compile 'RelevantLines.java' as well)
+
+	- launch like:   java -cp ".;../common/" UnionFind
+
+
     @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
 
 import java.util.*;
 import java.io.*;
+//import RelevantLines; // "It is a compile time error to import a type from the unnamed package." (Java language specification)
 
 /**
  * Provides the problem input data
@@ -33,7 +42,7 @@ class ScenarioProvider {
 
 	static final String scenarioFile = "testScenario.txt"; // name of the scenario file
 
-	protected BufferedReader br;		// reader for the scenario file
+	RelevantLines parser;				// the provider of the relevant lines from the scenario file
 	protected int items = 0;			// number of elements from the described scenario
 	protected boolean valid = true;		// becomes false as soon as IO / parsing errors are found in the scenario file
 
@@ -42,7 +51,7 @@ class ScenarioProvider {
 	  */
 	public ScenarioProvider() {
         try {
-            br = new BufferedReader(new FileReader(scenarioFile));
+            parser = new RelevantLines(scenarioFile);
         } catch(IOException e) {
         	System.err.println("Couldn't open the scenario file: " + scenarioFile);
         	valid = false;
@@ -51,10 +60,7 @@ class ScenarioProvider {
 
         try {
         	String line = null;
-	        while((line = br.readLine()) != null) {
-	            if(line.length() == 0 || line.charAt(0) == '#')
-	            	continue;	// Ignore empty lines or lines containing comments (these start with '#')
-
+	        while((line = parser.nextLine()) != null) {
 		        Scanner s = new Scanner(line);
 		        if(s.hasNextInt()) {
 		        	items = s.nextInt();
@@ -85,10 +91,7 @@ class ScenarioProvider {
 
         try {
         	String line = null;
-	        while((line = br.readLine()) != null) {
-	            if(line.length() == 0 || line.charAt(0) == '#')
-	            	continue;	// Ignore empty lines or lines containing comments (these start with '#')
-
+	        while((line = parser.nextLine()) != null) {
 		        Scanner s = new Scanner(line);
 		        int idx1, idx2;
 		        if(s.hasNextInt()) {

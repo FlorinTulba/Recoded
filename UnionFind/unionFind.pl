@@ -121,20 +121,6 @@ initUF(N, Ancestors, [0 | NextRanks]) :-
 
 
 
-% Fails for lines from the test scenario file that are empty or comments
-relevantLine(LineStr) :-
-	\+ LineStr = "",						% Ignore empty lines
-	\+ string_code(1, LineStr, 35).			% Ignore lines containing comments (they start with '#', which has 35 as char code)
-
-% Provides the trimmed version of the next non-empty and non-comment line from the test scenario file.
-% Fails on EOF.
-skipUselessLines(Fd, Line) :-
-    \+ at_end_of_stream(Fd),
-    read_string(Fd, '\n', '\r\t ', _, LineStr),	% Trims the line from Spaces, Tabs and Carriage Returns
-    ((relevantLine(LineStr), !, Line = LineStr) 
-    	;
-    skipUselessLines(Fd, Line)).
-
 % Reads the items count (N) from the test scenario file
 readItemsCount(Fd, N) :-
 	skipUselessLines(Fd, Line),
@@ -175,6 +161,7 @@ processUnions(Fd, Ancestors, Ranks) :-
 
 % Predicate for launching the program
 main :-
+	consult('../common/util.pl'), % imports predicate 'skipUselessLines'
 	open('testScenario.txt', read, Fd),
 	(readItemsCount(Fd, N) ->
 		(

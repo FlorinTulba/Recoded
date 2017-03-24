@@ -1,12 +1,14 @@
 /*
 Implementation of the UnionFind data structure described here:
-https://en.wikipedia.org/wiki/Disjounsigned-set_data_structure
+	https://en.wikipedia.org/wiki/Disjounsigned-set_data_structure
 
 Compiled with g++ 5.4.0:
-	g++ -std=c++11 -Ofast -Wall -o unionFind unionFind.cpp
+	g++ -std=c++14 -Ofast -Wall "../common/util.cpp" unionFind.cpp -o unionFind
 
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
+
+#include "../common/util.h"
 
 #include <string>
 #include <fstream>
@@ -138,10 +140,7 @@ public:
 			return;
 		}
 		string line;
-		while(getline(ifs, line)) {
-			if((line.empty() || (line.size() == 1ULL && line[0] == '\r')) || line[0] == '#')
-				continue;	// Ignore empty lines or lines containing comments (these start with '#')
-
+		while(nextRelevantLine(ifs, line)) {
 			istringstream iss(line);
 			if( ! (iss>>items)) {
 				cerr<<"Couldn't read the items count from the scenario file! Please correct this error and then try again!"<<endl;
@@ -167,10 +166,7 @@ public:
 		}
 
 		string line;
-		while(getline(ifs, line)) {
-			if((line.empty() || (line.size() == 1ULL && line[0] == '\r')) || line[0] == '#')
-				continue;	// Ignore empty lines or lines containing comments (these start with '#')
-
+		while(nextRelevantLine(ifs, line)) {
 			istringstream iss(line);
 			unsigned idx1, idx2;
 			if( ! (iss>>idx1>>idx2)) {
@@ -179,8 +175,7 @@ public:
 				break;
 			}
 
-			//return make_unique<ElemPair>(idx1, idx2); // C++14
-			return unique_ptr<ElemPair>(new ElemPair(idx1, idx2));
+			return make_unique<ElemPair>(idx1, idx2);
 		}
 
 		return nullptr;
