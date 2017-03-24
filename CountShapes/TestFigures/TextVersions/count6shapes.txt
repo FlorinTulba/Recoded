@@ -1,0 +1,9 @@
+# Manually generated file.
+# Describes the figure '../count6shapes.png' and uses the same intersections labels.
+# Each of the following rows displays all the points from a separate full line from the image.
+
+A C
+A D
+E F
+A E B
+B F D C

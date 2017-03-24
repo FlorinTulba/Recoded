@@ -1,0 +1,20 @@
+# Manually generated file.
+# Describes the figure '../count673shapes.png' and uses the same intersections labels.
+# Each of the following rows displays all the points from a separate full line from the image.
+
+A B C D E
+A P O N M
+A R G1 Z I
+C T G1 B1 K
+E F G H I
+E V G1 D1 M
+G X G1 F1 O
+I J K L M
+A Q F1 D1 C1 L
+A S T V W F
+B S R F1 E1 M
+D U V X Y I
+E U T R Q P
+E W X Z A1 J
+H Y Z B1 C1 M
+I A1 B1 D1 E1 N
