@@ -5,13 +5,14 @@ See the tested figures in '../TestFigures/'.
 Requires Boost installation (www.boost.org).
 
 Compiled with g++ 5.4.0:
-	g++ -I "Path_to_Boost_install_folder" -std=c++14 -Ofast -Wall "../../common/util.cpp" countShapes.cpp -o countShapes
+	g++ -I "Path_to_Boost_install_folder" -std=c++14 -fopenmp -Ofast -Wall "../../common/util.cpp" countShapes.cpp -o countShapes
 
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
 #include "../../common/util.h"
 
+#include <forward_list>
 #include <vector>
 #include <set>
 #include <map>
@@ -22,6 +23,8 @@ Compiled with g++ 5.4.0:
 #include <algorithm>
 #include <iterator>
 
+#include <omp.h>
+
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 
 using namespace std;
@@ -29,7 +32,6 @@ using namespace boost;
 
 //#define SHOW_CONFIG			// Uncomment to verify the correctness of the loaded scenario
 #define SHOW_SHAPES				// Comment if only processing speed matters (the found shapes won't be displayed)
-//#define CHECK_UNIQUENESS		// Uncomment if some reported shapes appear as duplicates
 
 /// Counts triangles and convex quadrilaterals from a figure
 class ShapeCounter {
@@ -38,30 +40,15 @@ protected:
 	size_t L = 0ULL;	///< Lines Count
 	size_t triangles_ = 0ULL;	///< Count of triangles
 	size_t convQuadr = 0ULL;	///< Count of convex quadrilaterals
+
 #ifdef SHOW_SHAPES
 	vector<string> pointNames;			///< the names of the points
 #endif // SHOW_SHAPES
+
 	vector<dynamic_bitset<>> lineMembers;		///< the indices of the members of each line
 	vector<dynamic_bitset<>> connections;		///< points connectivity matrix
 	vector<dynamic_bitset<>> membership;		///< membership of points to the lines
 	vector<map<size_t, size_t>> membershipAsRanks; ///< for each point a map between lineIdx and rankWithinLine
-
-#ifdef CHECK_UNIQUENESS
-	set<dynamic_bitset<>> uniqueTriangles;		///< set of all unique triangles
-	set<dynamic_bitset<>> uniqueQuadrilaterals;	///< set of all unique convex quadrilaterals
-#endif // CHECK_UNIQUENESS
-
-	/*
-	// Not worth calling repeatedly for same p1 & p2. A part of the returned expression can be computed once before the call.
-	// The code optimized this aspect and doesn't call this method at all.
-
-	/// Returns true if p1,p2,p3 are collinear
-	bool coll(size_t p1, size_t p2, size_t p3) const {
-		assert(max(p1, p2) < N && p3 < N);
-		assert(p1!=p2 && p1!=p3 && p2!=p3);
-		return (membership[p1] & membership[p2] & membership[p3]).any();
-	}
-	*/
 
 	typedef pair<size_t, size_t> Line;	///< Parameter type for the methods below providing the indices of 2 points crossed by a line
 
@@ -138,9 +125,11 @@ public:
 				size_t pointIdx;
 				const auto it = pointsIndices.find(pointName);
 				if(it == pointsIndices.cend()) {
+
 #ifdef SHOW_SHAPES
 					pointNames.push_back(pointName);
 #endif // SHOW_SHAPES
+
 					pointIdx = pointsIndices[pointName] = N++;
 					for(auto &prevMembers : lineMembers)
 						prevMembers.push_back(false);
@@ -174,15 +163,14 @@ public:
 				"Point "<<i
 #endif // SHOW_SHAPES
 				<<": connections {"<<connections[i]<<"} ; member of lines {"<<membership[i]<<"} ; pos in lines {";
-			for(const auto &lineIdxRankPair : membershipAsRanks[i]) {
+			for(const auto &lineIdxRankPair : membershipAsRanks[i])
 				cout<<lineIdxRankPair.second<<"(l"<<lineIdxRankPair.first<<") ";
-			}
+
 			cout<<"\b}"<<endl;
 		}
 
-		for(size_t i = 0ULL; i < L; ++i) {
+		for(size_t i = 0ULL; i < L; ++i)
 			cout<<'L'<<i<<": members {"<<lineMembers[i]<<'}'<<endl;
-		}
 
 		cout<<endl;
 #endif // SHOW_CONFIG
@@ -190,23 +178,37 @@ public:
 
 	/// Performs the actual shape counting
 	void process() {
-#ifdef CHECK_UNIQUENESS
-		dynamic_bitset<> shapeCfg(N); // tackle triangles and quadrilaterals together
-#endif // CHECK_UNIQUENESS
 
-		// One step for ensuring the uniqueness of the solutions:
-		// a mask to prevent the shapes found later from using points before P1.
-		auto maskP1 = ~dynamic_bitset<>(N);
-		for(size_t p1 = 0ULL, limP1 = ((N >= 2ULL) ? (N - 2ULL) : 0ULL); p1 < limP1; 
-#ifdef CHECK_UNIQUENESS
-						shapeCfg[p1] = false,
-#endif // CHECK_UNIQUENESS
-						++p1) {
-#ifdef CHECK_UNIQUENESS
-			shapeCfg[p1] = true;
-#endif // CHECK_UNIQUENESS
+#ifdef SHOW_SHAPES
+		// Collecting the shapes reported by a participating thread whenever it finishes a for loop
+		forward_list<string> outputShapes;
+		auto itLastItem = outputShapes.before_begin(); // appropriate for 'outputShapes.insert_after(itLastItem)'
+#endif // SHOW_SHAPES
+
+		// Count of each type of shape to be used within OpenMP reduction and
+		// to be copied over the class fields at the end of the for loop
+		size_t trCount = 0ULL, quadCount = 0ULL;
+		
+		// Total for loops to be dynamically distributed among the participating threads
+		const int limP1 = int(N) - 2;
+
+		#pragma omp parallel
+		#pragma omp for schedule(dynamic) nowait reduction(+ : trCount, quadCount)
+		for(int p1 = 0; p1 < limP1; ++p1) {
+
+#ifdef SHOW_SHAPES
+			// Collects all the shapes generated starting from point p1
+			forward_list<string> localShapes;
+			auto itLastLocalItem = localShapes.before_begin(); // appropriate for 'localShapes.insert_after(itLastLocalItem)'
+			const string nameP1 = pointNames[p1];
+			ostringstream oss; // shape names build helper
+#endif // SHOW_SHAPES
+
 			const auto &mem1 = membership[p1];
-			maskP1 <<= 1; // Ignore connections before and including P1
+
+			// One step for ensuring the uniqueness of the solutions:
+			// a mask to prevent the shapes found later from using points before P1.
+			const auto maskP1 = (~dynamic_bitset<>(N)) << (p1+1); // Ignore connections before and including P1
 			const auto connOfP1Bitset = connections[p1] & maskP1;
 			const size_t countConnOfP1 = connOfP1Bitset.count();
 			if(countConnOfP1 < 2ULL)
@@ -216,37 +218,30 @@ public:
 			for(size_t p = connOfP1Bitset.find_first(), idx = 0ULL; idx < countConnOfP1; p = connOfP1Bitset.find_next(p), ++idx)
 				connOfP1.push_back(p);
 			
-			for(size_t idxP2 = 0ULL, p2 = connOfP1.front(), limP2 = countConnOfP1 - 1ULL; idxP2 < limP2;
-#ifdef CHECK_UNIQUENESS
-							shapeCfg[p2] = false,
-#endif // CHECK_UNIQUENESS
-							p2 = connOfP1[++idxP2]) {
-#ifdef CHECK_UNIQUENESS
-				shapeCfg[p2] = true;
-#endif // CHECK_UNIQUENESS
+			for(size_t idxP2 = 0ULL, p2 = connOfP1.front(), limP2 = countConnOfP1 - 1ULL; idxP2 < limP2; p2 = connOfP1[++idxP2]) {
 				const auto &mem2 = membership[p2], mem1and2 = mem1 & mem2;
+
+#ifdef SHOW_SHAPES
+				const string nameP2 = pointNames[p2];
+#endif // SHOW_SHAPES
+
 				for(size_t idxLastP = idxP2 + 1ULL; idxLastP < countConnOfP1; ++idxLastP) {
 					const size_t lastP = connOfP1[idxLastP];
 					const auto &memLast = membership[lastP];
 					if((mem1and2 & memLast).any()) // coll(p1, p2, lastP)
 						continue;	// Ignore collinear points
 
-#ifdef CHECK_UNIQUENESS
-					shapeCfg[lastP] = true;
-#endif // CHECK_UNIQUENESS
+#ifdef SHOW_SHAPES
+					const string nameLastP = pointNames[lastP];
+#endif // SHOW_SHAPES
+
 					if(connections[p2][lastP]) {
-						++triangles_;
+						++trCount;
 #ifdef SHOW_SHAPES
-						cout<<'<'<<pointNames[p1]<<pointNames[p2]<<pointNames[lastP]<<"> ";
+						oss<<'<'<<nameP1<<nameP2<<nameLastP<<'>';
+						itLastLocalItem = localShapes.insert_after(itLastLocalItem, oss.str());
+						oss.str(""); oss.clear();
 #endif // SHOW_SHAPES
-#ifdef CHECK_UNIQUENESS
-						if(!uniqueTriangles.insert(shapeCfg).second)
-#ifdef SHOW_SHAPES
-							cout<<"\bd "; // mark as duplicate
-#else
-							cout<<"Found duplicate: <P"<<p1<<" P"<<p2<<" P"<<lastP<<"> --> "<<shapeCfg<<endl;
-#endif // SHOW_SHAPES
-#endif // CHECK_UNIQUENESS
 					}
 
 					const auto connOfP2_LastP_Bitset = connections[p2] & connections[lastP] & maskP1;
@@ -257,37 +252,34 @@ public:
 							continue;	// Ignore collinear points
 
 						if(convex(p1, mem1, p2, mem2, p3, mem3, lastP, memLast)) {
-							++convQuadr;
+							++quadCount;
 #ifdef SHOW_SHAPES
-							cout<<'['<<pointNames[p1]<<pointNames[p2]<<pointNames[p3]<<pointNames[lastP]<<"] ";
+							oss<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameLastP<<']';
+							itLastLocalItem = localShapes.insert_after(itLastLocalItem, oss.str());
+							oss.str(""); oss.clear();
 #endif // SHOW_SHAPES
-#ifdef CHECK_UNIQUENESS
-							shapeCfg[p3] = true;
-							if(!uniqueQuadrilaterals.insert(shapeCfg).second)
-#ifdef SHOW_SHAPES
-								cout<<"\bd "; // mark as duplicate with a 'd'
-#else
-								cout<<"Found duplicate: [P"<<p1<<" P"<<p2<<" P"<<p3<<" P"<<lastP<<"] --> "<<shapeCfg<<endl;
-#endif // SHOW_SHAPES
-							shapeCfg[p3] = false;
-#endif // CHECK_UNIQUENESS
 						}
 					}
-#ifdef CHECK_UNIQUENESS
-					shapeCfg[lastP] = false;
-#endif // CHECK_UNIQUENESS
 				}
 			}
-		}
+
 #ifdef SHOW_SHAPES
+			if( ! localShapes.empty()) // avoids below an invalid 'itLastLocalItem' and skips the critical section when there are no new shapes
+			#pragma omp critical
+			{
+				outputShapes.splice_after(itLastItem, std::move(localShapes));
+				itLastItem = itLastLocalItem;
+			}
+#endif // SHOW_SHAPES			
+		} // #pragma omp for    ends here
+
+		triangles_ = trCount;
+		convQuadr = quadCount;
+
+#ifdef SHOW_SHAPES
+		copy(cbegin(outputShapes), cend(outputShapes), ostream_iterator<string>(cout, " "));
 		cout<<endl;
 #endif // SHOW_SHAPES
-#ifdef CHECK_UNIQUENESS
-		if(uniqueTriangles.size() != triangles_)
-			cout<<"There were "<<triangles_ - uniqueTriangles.size()<<" duplicate triangles!"<<endl;
-		if(uniqueQuadrilaterals.size() != convQuadr)
-			cout<<"There were "<<convQuadr - uniqueQuadrilaterals.size()<<" duplicate quadrilaterals!"<<endl;
-#endif // CHECK_UNIQUENESS
 	}
 
 	size_t triangles() const { return triangles_; }
