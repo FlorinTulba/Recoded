@@ -323,7 +323,7 @@ int main() {
 	vector<vector<string>> lines;
 	string line;
 	while(nextRelevantLine(ifs, line)) {
-		istringstream(line);
+		istringstream iss(line);
 		lines.emplace_back(istream_iterator<string>(iss), istream_iterator<string>());
 	}
 
