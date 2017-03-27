@@ -10,6 +10,21 @@ Compiled with g++ 5.4.0:
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
+/*
+Counting the shapes is performed in the methods 'ShapeCounter::process' and 'ShapeCounter::process_OpenMP',
+whose implementations look very similar. Therefore, rather than duplicating their code, this file is parsed
+twice, first time when COUNT_SHAPES_USING_OPEN_MP is not defined and second time after defining it.
+
+First traversal compiles the sequential (non-OpenMP) 'ShapeCounter::process', it defines
+COUNT_SHAPES_USING_OPEN_MP and it includes this file for the second parsing.
+Second traversal will compile the parallel (OpenMP) 'ShapeCounter::process_OpenMP' while skipping
+the rest of the code parsed during the first traversal.
+*/
+#ifndef COUNT_SHAPES_USING_OPEN_MP
+
+//#define SHOW_CONFIG			// Uncomment to verify the correctness of the loaded scenario
+#define SHOW_SHAPES				// Comment if only processing speed matters (the found shapes won't be displayed)
+
 #include "../../common/util.h"
 
 #include <forward_list>
@@ -29,9 +44,6 @@ Compiled with g++ 5.4.0:
 
 using namespace std;
 using namespace boost;
-
-//#define SHOW_CONFIG			// Uncomment to verify the correctness of the loaded scenario
-#define SHOW_SHAPES				// Comment if only processing speed matters (the found shapes won't be displayed)
 
 /// Counts triangles and convex quadrilaterals from a figure
 class ShapeCounter {
@@ -64,7 +76,7 @@ protected:
 			return false; // one of the provided points from L2 are inside L1
 
 		const size_t lineIdxPair2 = (memL2_1 & memL2_2).find_first();
-		auto intersectionPoint = (lineMembers[lineIdxPair1] & lineMembers[lineIdxPair2]).find_first();
+		const auto intersectionPoint = (lineMembers[lineIdxPair1] & lineMembers[lineIdxPair2]).find_first();
 		if(intersectionPoint != dynamic_bitset<>::npos) {
 			// The found intersection point should fall outside the segment l1
 			// The check relies on the fact that lines specify the contained points in order
@@ -176,14 +188,16 @@ public:
 #endif // SHOW_CONFIG
 	}
 
-	/// Performs the actual shape counting
+	/// Performs the actual shape counting in a sequential fashion
 	void process() {
-
+#else // COUNT_SHAPES_USING_OPEN_MP defined
+	/// Performs the actual shape counting in parallel using OpenMP
+	void process_OpenMP() {
 #ifdef SHOW_SHAPES
-		// Collecting the shapes reported by a participating thread whenever it finishes a for loop
-		forward_list<string> outputShapes;
-		auto itLastItem = outputShapes.before_begin(); // appropriate for 'outputShapes.insert_after(itLastItem)'
+		forward_list<string> outputShapes; // Collecting the shapes reported by any participating thread whenever it finishes a for loop
+		auto itLastItem = outputShapes.cbefore_begin(); // appropriate for 'outputShapes.splice_after(itLastItem)'
 #endif // SHOW_SHAPES
+#endif // COUNT_SHAPES_USING_OPEN_MP defined or not
 
 		// Count of each type of shape to be used within OpenMP reduction and
 		// to be copied over the class fields at the end of the for loop
@@ -191,17 +205,19 @@ public:
 		
 		// Total for loops to be dynamically distributed among the participating threads
 		const int limP1 = int(N) - 2;
-
+#ifdef COUNT_SHAPES_USING_OPEN_MP // more efficient than '#pragma omp parallel if(false)'
 		#pragma omp parallel
 		#pragma omp for schedule(dynamic) nowait reduction(+ : trCount, quadCount)
+#endif // COUNT_SHAPES_USING_OPEN_MP
 		for(int p1 = 0; p1 < limP1; ++p1) {
 
 #ifdef SHOW_SHAPES
-			// Collects all the shapes generated starting from point p1
-			forward_list<string> localShapes;
-			auto itLastLocalItem = localShapes.before_begin(); // appropriate for 'localShapes.insert_after(itLastLocalItem)'
-			const string nameP1 = pointNames[p1];
+#ifdef COUNT_SHAPES_USING_OPEN_MP
+			forward_list<string> localShapes; // Collects all the shapes generated starting from point p1
+			auto itLastLocalItem = localShapes.cbefore_begin(); // appropriate for 'localShapes.insert_after(itLastLocalItem)'
 			ostringstream oss; // shape names build helper
+#endif // COUNT_SHAPES_USING_OPEN_MP
+			const string nameP1 = pointNames[p1];
 #endif // SHOW_SHAPES
 
 			const auto &mem1 = membership[p1];
@@ -238,9 +254,13 @@ public:
 					if(connections[p2][lastP]) {
 						++trCount;
 #ifdef SHOW_SHAPES
+#ifdef COUNT_SHAPES_USING_OPEN_MP // Cheaper to enlist the found shape here and display the whole list at the end
 						oss<<'<'<<nameP1<<nameP2<<nameLastP<<'>';
 						itLastLocalItem = localShapes.insert_after(itLastLocalItem, oss.str());
 						oss.str(""); oss.clear();
+#else // COUNT_SHAPES_USING_OPEN_MP not defined - display directly the found shape
+						cout<<'<'<<nameP1<<nameP2<<nameLastP<<"> ";
+#endif // COUNT_SHAPES_USING_OPEN_MP defined or not
 #endif // SHOW_SHAPES
 					}
 
@@ -254,33 +274,46 @@ public:
 						if(convex(p1, mem1, p2, mem2, p3, mem3, lastP, memLast)) {
 							++quadCount;
 #ifdef SHOW_SHAPES
+#ifdef COUNT_SHAPES_USING_OPEN_MP // Cheaper to enlist the found shape here and display the whole list at the end
 							oss<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameLastP<<']';
 							itLastLocalItem = localShapes.insert_after(itLastLocalItem, oss.str());
 							oss.str(""); oss.clear();
+#else // COUNT_SHAPES_USING_OPEN_MP not defined - display directly the found shape
+							cout<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameLastP<<"> ";
+#endif // COUNT_SHAPES_USING_OPEN_MP defined or not
 #endif // SHOW_SHAPES
 						}
 					}
 				}
 			}
 
-#ifdef SHOW_SHAPES
-			if( ! localShapes.empty()) // avoids below an invalid 'itLastLocalItem' and skips the critical section when there are no new shapes
-			#pragma omp critical
+#if defined(SHOW_SHAPES) && defined(COUNT_SHAPES_USING_OPEN_MP)
+			if( ! localShapes.empty()) // avoids storing below an invalid 'itLastLocalItem' and skips the critical section when there are no new shapes
+			#pragma omp critical // short O(1) critical section, instead of appending outputShapes after each found shape
 			{
 				outputShapes.splice_after(itLastItem, std::move(localShapes));
 				itLastItem = itLastLocalItem;
 			}
-#endif // SHOW_SHAPES			
+#endif // SHOW_SHAPES && COUNT_SHAPES_USING_OPEN_MP
 		} // #pragma omp for    ends here
 
 		triangles_ = trCount;
 		convQuadr = quadCount;
 
 #ifdef SHOW_SHAPES
+#ifdef COUNT_SHAPES_USING_OPEN_MP
 		copy(cbegin(outputShapes), cend(outputShapes), ostream_iterator<string>(cout, " "));
+#endif // COUNT_SHAPES_USING_OPEN_MP
 		cout<<endl;
 #endif // SHOW_SHAPES
 	}
+
+#ifndef COUNT_SHAPES_USING_OPEN_MP
+#	define COUNT_SHAPES_USING_OPEN_MP
+#	include __FILE__	// Produces the second traversal of the file, with COUNT_SHAPES_USING_OPEN_MP defined this time
+	// Do not include 'countShapes.cpp' in a different 'cpp' file! Otherwise, __FILE__ points to the enclosing 'cpp' file.
+
+	// The first traversal resumes from here and ends at the end of the file
 
 	size_t triangles() const { return triangles_; }
 	size_t convexQuadrilaterals() const { return convQuadr; }
@@ -322,11 +355,17 @@ int main() {
 	ifs.close();
 
 	ShapeCounter sc(lines);
-	sc.process();
 
-	const size_t totalShapes = sc.triangles() + sc.convexQuadrilaterals();
+	sc.process();
+	size_t totalShapes = sc.triangles() + sc.convexQuadrilaterals();
 	cout<<"There are "<<sc.triangles()<<" triangles and "<<sc.convexQuadrilaterals()
-		<<" convex quadrilaterals, which means "<<totalShapes<<" convex shapes in total."<<endl;
+		<<" convex quadrilaterals, which means "<<totalShapes<<" convex shapes in total."<<endl<<endl;
+
+	sc.process_OpenMP();
+	totalShapes = sc.triangles() + sc.convexQuadrilaterals();
+	cout<<"There are "<<sc.triangles()<<" triangles and "<<sc.convexQuadrilaterals()
+		<<" convex quadrilaterals, which means "<<totalShapes<<" convex shapes in total."<<endl<<endl;
 
 	return 0;
 }
+#endif // COUNT_SHAPES_USING_OPEN_MP
