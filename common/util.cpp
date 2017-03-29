@@ -9,7 +9,10 @@
 
 #include "util.h"
 
+#include <iostream>
+
 using namespace std;
+using namespace std::chrono;
 
 string trim(const string &s) {
 	auto itFront = cbegin(s);
@@ -27,4 +30,40 @@ istream& nextRelevantLine(istream &is, string &line) {
 			break;
 	}
 	return is;
+}
+
+Timer::Timer(const std::string &taskName_, size_t repetitions_/* = 1ULL*/) :
+		taskName(taskName_),
+		repetitions(repetitions_),
+		// taskName & repetitions are initialized before starting the timer
+		startedAt(high_resolution_clock::now()) {}
+
+Timer::Timer(Timer &&t) :
+		taskName(std::move(t.taskName)),
+		repetitions(t.repetitions),
+		startedAt(std::move(t.startedAt)) {
+	t.repetitions = 0ULL; // sets t as invalid
+}
+
+Timer::~Timer() {
+	const double elapsedS = elapsed(); // harmless call if the Timer isn't valid
+	
+	if(repetitions != 0ULL) // validity check after stopping the timer
+		cout<<"Task '"<<taskName<<"' required: "<< elapsedS / (double)repetitions <<"s!"<<endl;
+}
+
+Timer& Timer::operator=(Timer &&t) {
+	if(this != &t) {
+		taskName = std::move(t.taskName);
+		repetitions = t.repetitions;
+		startedAt = std::move(t.startedAt);
+
+		t.repetitions = 0ULL; // sets t as invalid
+	}
+	return *this;
+}
+
+double Timer::elapsed() const {
+	const duration<double> elapsedS = high_resolution_clock::now() - startedAt;
+	return elapsedS.count();
 }

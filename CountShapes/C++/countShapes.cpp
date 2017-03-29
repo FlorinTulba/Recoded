@@ -23,7 +23,7 @@ the rest of the code parsed during the first traversal.
 #ifndef COUNT_SHAPES_USING_OPEN_MP
 
 //#define SHOW_CONFIG			// Uncomment to verify the correctness of the loaded scenario
-#define SHOW_SHAPES				// Comment if only processing speed matters (the found shapes won't be displayed)
+//#define SHOW_SHAPES				// Comment if only processing speed matters (the found shapes won't be displayed)
 
 #include "../../common/util.h"
 
@@ -359,12 +359,22 @@ int main() {
 
 	ShapeCounter sc(lines);
 
-	sc.process();
+	enum {REPETITIONS = 100};
+
+	{
+		Timer t("Counting shapes sequentially", REPETITIONS);
+		for(int i = 0; i < REPETITIONS; ++i)
+			sc.process();
+	}
 	size_t totalShapes = sc.triangles() + sc.convexQuadrilaterals();
 	cout<<"There are "<<sc.triangles()<<" triangles and "<<sc.convexQuadrilaterals()
 		<<" convex quadrilaterals, which means "<<totalShapes<<" convex shapes in total."<<endl<<endl;
 
-	sc.process_OpenMP();
+	{
+		Timer t("Counting shapes with OpenMP", REPETITIONS);
+		for(int i = 0; i < REPETITIONS; ++i)
+			sc.process_OpenMP();
+	}
 	totalShapes = sc.triangles() + sc.convexQuadrilaterals();
 	cout<<"There are "<<sc.triangles()<<" triangles and "<<sc.convexQuadrilaterals()
 		<<" convex quadrilaterals, which means "<<totalShapes<<" convex shapes in total."<<endl<<endl;
