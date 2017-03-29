@@ -6,10 +6,10 @@
 
 	Uses '../common/RelevantLines.java', so:
 
-	- compile with:  javac -cp "../common/" UnionFind.java 
+	- compile with:  javac -cp "../common/" ShapeCounter.java 
 		(this will compile 'RelevantLines.java' as well)
 
-	- launch like:   java -cp ".;../common/" UnionFind
+	- launch like:   java -cp ".;../common/" ShapeCounter
 
 
 	@2017 Florin Tulba (florintulba@yahoo.com)
