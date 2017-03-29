@@ -87,7 +87,13 @@ classdef ShapeCounter < handle
         end
         
         % Performs the actual shape counting
-        function process(self)
+        % Boolean parameter 'showShapes' instructs the counter to display
+        % the found shapes or not.
+        % If parameter 'showShapes' is not provided, its value is true, by default.
+        function process(self, showShapes)
+            if nargin == 1
+                showShapes = true;
+            end
             % One step for ensuring the uniqueness of the solutions:
             % a mask to prevent the shapes found later from using points before P1.
             maskP1 = bitarray(self.N); maskP1.compl();
@@ -114,8 +120,10 @@ classdef ShapeCounter < handle
 
                         if self.connections(p2).get(lastP)
                             self.triangles = self.triangles + 1;
-                            fprintf('<%s%s%s> ', ...
-                                self.pointNames{p1}, self.pointNames{p2}, self.pointNames{lastP});
+                            if showShapes
+                                fprintf('<%s%s%s> ', ...
+                                    self.pointNames{p1}, self.pointNames{p2}, self.pointNames{lastP});
+                            end
                         end
 
                         connOfP2_LastP_Bitset = self.connections(p2).and(...
@@ -131,9 +139,11 @@ classdef ShapeCounter < handle
 
                             if self.convex(p1, mem1, p2, mem2, p3, mem3, lastP, memLast)
                                 self.convexQuadrilaterals = self.convexQuadrilaterals + 1;
-                                fprintf('[%s%s%s%s] ', ...
-                                    self.pointNames{p1}, self.pointNames{p2}, ...
-                                    self.pointNames{p3}, self.pointNames{lastP});
+                                if showShapes
+                                    fprintf('[%s%s%s%s] ', ...
+                                        self.pointNames{p1}, self.pointNames{p2}, ...
+                                        self.pointNames{p3}, self.pointNames{lastP});
+                                end
                             end
                         end
                     end

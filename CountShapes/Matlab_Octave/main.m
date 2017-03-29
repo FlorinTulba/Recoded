@@ -5,14 +5,15 @@
 %}
 
 close all; clear all; clc
-
+tic
 %% Loading a figure (containing a shape to be processed)
 
 % Select a file from below and comment the rest
-fileName = 'count6shapes.png';
+%fileName = 'count6shapes.png';
 %fileName = 'count9shapes.png';
 %fileName = 'count100shapes.png';
 %fileName = 'count673shapes.png';
+fileName = 'count25651shapes.png';
 
 I = imread(sprintf('../TestFigures/%s', fileName)); Ired = ~(I(:, :, 1)>200);
 
@@ -43,8 +44,8 @@ subplot(222), imshow(maxLog_1pH - log_1pH, [0 maxLog_1pH], 'XData',T, 'YData',R,
 xlabel('\theta'), ylabel('r'), title('Hough Transform'), axis on, axis normal, hold on
 
 % Setting here a value around 0.125*max(H(:)) as threshold might help
-% finding more lines (when some are not detected with 0.25*max(H(:))
-P = houghpeaks(H, 150, 'Threshold',0.25*max(H(:)), 'NHoodSize',[5 5]);
+% finding more lines (when some are not detected with 0.175*max(H(:))
+P = houghpeaks(H, 150, 'Threshold',0.175*max(H(:)), 'NHoodSize',[5 5]);
 x = T(P(:,2)); y = R(P(:,1)); plot(x,y, 's', 'color','red'); clear x y
 
 lines = houghlines(Ired, T, R, P, 'FillGap',50, 'MinLength',7);
@@ -300,21 +301,28 @@ for i = 1 : linesCount
     lines{i} = li(Indices);
 end
 
+elapsedS = toc;
+fprintf('Interpreting the figure "%s" took %.6fs\n', fileName, elapsedS)
+
 clear i j li lj x y rx ry Pos prevCount newCount loops rest ExtShape
 clear smallDiffX smallDiffY diffX diffY Sorted Indices imRows imCols
 
 %% Display final lines and the names of the intersections
 
-subplot(224), imshow(ones(size(Ired))), xlabel('Labeled Intersections '), hold on
+subplot(224), imshow(ones(size(Ired))), xlabel('Labeled Intersections'), hold on
 for i = 1 : linesCount
     segmentEnds = lines{i}([1, end]);
     coords = uniquePoints(segmentEnds, 1:2);
     plot(coords(:,1), coords(:,2), 'LineWidth',1, 'Color','black');
 end
 
+fontSz = 7;
+if foundPoints < 40 % Increase the font size for only a few found points
+    fontSz = round(20 - 13*(foundPoints-3)/37); % equally spread between 7 and 20
+end
 for i = 1 : foundPoints
     pos = uniquePoints(i, 1:2);
-    text(pos(1)-3, pos(2), pointNames{i}, 'Color','red', 'FontSize',15)
+    text(pos(1)-3, pos(2), pointNames{i}, 'Color','red', 'FontSize',fontSz)
 end
 
 hold off
@@ -347,14 +355,19 @@ end
 
 fclose(fd);
 
+tic
 sc = ShapeCounter(config);
+elapsedS = toc;
+fprintf('Creating the ShapeCounter object took %.6fs\n', elapsedS)
 
 clear i j points pointsCount configI fd
 
 %% Launch the ShapeCounter
-sc.process();
+tic
+sc.process(foundPoints<=20); % display all found shapes only if foundPoints <= 20; Otherwise display none
+elapsedS = toc;
 totalShapes = sc.triangles + sc.convexQuadrilaterals;
-fprintf('There are %d triangles and %d convex quadrilaterals, which means %d convex shapes in total.\n', ...
-    sc.triangles, sc.convexQuadrilaterals, totalShapes);
+fprintf('There are %d triangles and %d convex quadrilaterals, which means %d convex shapes in total.\nCounting them took %.6fs\n', ...
+    sc.triangles, sc.convexQuadrilaterals, totalShapes, elapsedS);
 
-clear totalShapes
+clear totalShapes elapsedS

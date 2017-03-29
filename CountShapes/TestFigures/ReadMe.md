@@ -2,7 +2,7 @@
 
 * * *
 
-The 4 existing figures can be directly interpreted by the Matlab/Octave implementation of the shape counter.
+The 5 existing figures can be directly interpreted by the Matlab/Octave implementation of the shape counter.
 
 The interpreter should work with new test figures as long as these:
 

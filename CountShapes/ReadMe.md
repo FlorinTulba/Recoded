@@ -10,7 +10,7 @@ The problem is also a good refresher for parallelism techniques (implemented by 
 
 These are the tested figures:
 
-![](TestFigures/count6shapes.png)![](TestFigures/count9shapes.png)![](TestFigures/count100Shapes.png)![](TestFigures/count673shapes.png)
+![](TestFigures/count6shapes.png)![](TestFigures/count9shapes.png)![](TestFigures/count100Shapes.png)![](TestFigures/count673shapes.png)![](TestFigures/count25651shapes.png)
 
 Below are several steps performed while interpreting the figures. The initial intersection labels are ignored and new ones are assigned.
 
