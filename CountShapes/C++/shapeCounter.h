@@ -40,25 +40,28 @@ protected:
 	std::vector<std::string> pointNames;	///< the names of the points
 #endif // SHOW_SHAPES
 
-	std::vector<boost::dynamic_bitset<>> lineMembers;		///< the indices of the members of each line
-	std::vector<boost::dynamic_bitset<>> connections;		///< points connectivity matrix
-	std::vector<boost::dynamic_bitset<>> membership;		///< membership of points to the lines
-	std::vector<std::map<size_t, size_t>> membershipAsRanks;///< for each point a map between lineIdx and rankWithinLine
+	// When BlockType = size_t, OpenMP version reaches top performance, while the sequential version is worse.
+	// When BlockType = unsigned long, both versions perform quite well (optimal for the sequential version)
+	// Both versions' performance degrades for unsigned short or unsigned char
+	typedef unsigned long BlockType;
 
-	typedef std::pair<size_t, size_t> Line;	///< Parameter type for the methods below providing the indices of 2 points crossed by a line
+	std::vector<boost::dynamic_bitset<BlockType>> lineMembers;	///< the indices of the members of each line
+	std::vector<std::vector<size_t>> lineMembersByRank;			///< for each line a vector of pointIdx arranged by rank
+	std::vector<boost::dynamic_bitset<BlockType>> connections;	///< points connectivity matrix
+	std::vector<boost::dynamic_bitset<BlockType>> membership;	///< membership of points to the lines
 
-	/// @return true only if the extended lines l1 and l2 don't intersect, or intersect strictly outside the shape described by the 4 points from l1 and l2
-	bool allowedIntersection(
-				const Line &l1,							///< one line from a potential quadrilateral
-				const Line &l2,							///< the line across from l1 in the potential quadrilateral
-				const boost::dynamic_bitset<> &memL1,	///< 'and'-ed memberships (which lines include each point) of the 2 points from l1
-				const boost::dynamic_bitset<> &memL2_1,	///< membership (which lines include the point) of one point from l2
-				const boost::dynamic_bitset<> &memL2_2	///< membership (which lines include the point) of the other point from l2
-				) const;
+	typedef std::map<size_t, size_t> LineIdx_Rank;	///< map between lineIdx and rankWithinLine
+	std::vector<LineIdx_Rank> membershipAsRanks;	///< for each point a map between lineIdx and rankWithinLine
 
-	/// Checks convexity of p1-p4 quadrilateral, based on the membership of each point to the available lines
-	bool convex(size_t p1, const boost::dynamic_bitset<> &mem1, size_t p2, const boost::dynamic_bitset<> &mem2,
-				size_t p3, const boost::dynamic_bitset<> &mem3, size_t p4, const boost::dynamic_bitset<> &mem4) const;
+	/// @return true only if the provided intersection point denotes a non-degenerate and non-concave quadrilateral
+	bool allowedIntersection(size_t intersectionPoint,	///< index of the intersection point
+							 size_t idxL12,				///< index of the line passing through the first 2 considered points
+							 size_t idxL34,				///< index of the line passing through the last 2 considered points
+							 size_t rankP1_L12,			///< rank of P1 within line L12
+							 size_t rankP2_L12,			///< rank of P2 within line L12
+							 const LineIdx_Rank &mp3,	///< a map for the third point with the lines it belongs to and its rank on each such line
+							 const LineIdx_Rank &mp4	///< a map for the forth point with the lines it belongs to and its rank on each such line
+							 ) const;
 
 public:
 	/**

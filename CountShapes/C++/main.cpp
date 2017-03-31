@@ -65,13 +65,13 @@ int main() {
 	ShapeCounter sc(lines);
 
 	enum {REPETITIONS = 100};
-
+	size_t totalShapes;
 	{
 		Timer t("Counting shapes sequentially", REPETITIONS);
 		for(int i = 0; i < REPETITIONS; ++i)
 			sc.process();
 	}
-	size_t totalShapes = sc.triangles() + sc.convexQuadrilaterals();
+	totalShapes = sc.triangles() + sc.convexQuadrilaterals();
 	cout<<"There are "<<sc.triangles()<<" triangles and "<<sc.convexQuadrilaterals()
 		<<" convex quadrilaterals, which means "<<totalShapes<<" convex shapes in total."<<endl<<endl;
 
