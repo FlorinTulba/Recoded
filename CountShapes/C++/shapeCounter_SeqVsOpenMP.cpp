@@ -105,7 +105,8 @@ void ShapeCounter::process_OpenMP() {
 			if(choicesTriVertex.any()) {
 				trCount += choicesTriVertex.count();
 #ifdef SHOW_SHAPES
-				for(size_t p = choicesTriVertex.find_first(); p != dynamic_bitset<>::npos; p = choicesTriVertex.find_next(p)) {
+				for(size_t p = choicesTriVertex.find_first(); p != dynamic_bitset<>::npos;
+						p = choicesTriVertex.find_next(p)) {
 #ifdef COUNT_SHAPES_USING_OPEN_MP // Cheaper to enlist the found shape here and display the whole list at the end
 					oss<<'<'<<nameP1<<nameP2<<pointNames[p]<<'>';
 					itLastLocalItem = localShapes.insert_after(itLastLocalItem, oss.str());
@@ -117,45 +118,45 @@ void ShapeCounter::process_OpenMP() {
 #endif // SHOW_SHAPES
 			}
 
-			for(size_t lastP = choicesLastP.find_first(); lastP != dynamic_bitset<>::npos;
-					lastP = choicesLastP.find_next(lastP)) {
+			for(size_t p4 = choicesLastP.find_first(); p4 != dynamic_bitset<>::npos;
+					p4 = choicesLastP.find_next(p4)) {
 #ifdef SHOW_SHAPES
-				const string nameLastP = pointNames[lastP];
+				const string nameP4 = pointNames[p4];
 #endif // SHOW_SHAPES
 
-				const auto &memLast = membership[lastP], mem1andLast = mem1 & memLast;
-				const auto &membershipAsRanksLastP = membershipAsRanks[lastP];
-				const auto idxL1andLast = mem1andLast.find_first();
-				const size_t rankP1_L1andLast = membershipAsRanksP1.at(idxL1andLast),
-						rankLastP_L1andLast = membershipAsRanksLastP.at(idxL1andLast);
-				const auto &pointsL1andLast = lineMembers[idxL1andLast],
-						pointsL2andLast = connOfP2Bitset[lastP] ?
-							lineMembers[(mem2 & memLast).find_first()] : dynamic_bitset<BlockType>(N);
+				const auto &mem4 = membership[p4], mem1and4 = mem1 & mem4;
+				const auto &membershipAsRanksP4 = membershipAsRanks[p4];
+				const auto idxL14 = mem1and4.find_first();
+				const size_t rankP1_L14 = membershipAsRanksP1.at(idxL14),
+						rankP4_L14 = membershipAsRanksP4.at(idxL14);
+				const auto &pointsL14 = lineMembers[idxL14],
+						pointsL24 = connOfP2Bitset[p4] ? // P2 and P4 might not be connected
+							lineMembers[(mem2 & mem4).find_first()] : dynamic_bitset<BlockType>(N);
 
-				// Points after P1, connected to P2 and LastP, but not on the line P1-P2-LastP-P1
-				auto p3Choices = (connOfP2Bitset & connections[lastP] & maskP1) - 
-					(pointsL12 | lineMembers[idxL1andLast] | pointsL2andLast);
+				// Points after P1, connected to P2 and P4, but not on the lines P1-P2-P4-P1
+				const auto p3Choices = (connOfP2Bitset & connections[p4] & maskP1) - 
+					(pointsL12 | pointsL14 | pointsL24);
 
 				for(size_t p3 = p3Choices.find_first(); p3 != dynamic_bitset<>::npos;
 						p3 = p3Choices.find_next(p3)) {
 					const auto &mem3 = membership[p3];
 					const auto &membershipAsRanksP3 = membershipAsRanks[p3];
 					const auto idxL23 = (mem2 & mem3).find_first();
-					const auto idxL3andLast = (memLast & mem3).find_first();
+					const auto idxL34 = (mem4 & mem3).find_first();
 
-					// Check the intersection between L12 and L3andLast
-					auto idxInters = (pointsL12 & lineMembers[idxL3andLast]).find_first();
+					// Check the intersection between L12 and L34
+					auto idxInters = (pointsL12 & lineMembers[idxL34]).find_first();
 					if(idxInters != dynamic_bitset<>::npos) {
-						if( ! allowedIntersection(idxInters, idxL12, idxL3andLast,
+						if( ! allowedIntersection(idxInters, idxL12, idxL34,
 								rankP1_L12, rankP2_L12,
-								membershipAsRanksP3, membershipAsRanksLastP))
+								membershipAsRanksP3, membershipAsRanksP4))
 							continue; // degenerate / concave quadrilateral
 					} else {
-						// Check the intersection between L23 and L1andLast
-						idxInters = (pointsL1andLast & lineMembers[idxL23]).find_first();
+						// Check the intersection between L23 and L14
+						idxInters = (pointsL14 & lineMembers[idxL23]).find_first();
 						if(idxInters != dynamic_bitset<>::npos &&
-						   !allowedIntersection(idxInters, idxL1andLast, idxL23,
-									rankLastP_L1andLast, rankP1_L1andLast,
+						   ! allowedIntersection(idxInters, idxL14, idxL23,
+									rankP4_L14, rankP1_L14,
 									membershipAsRanksP2, membershipAsRanksP3))
 							continue; // degenerate / concave quadrilateral
 					}
@@ -164,11 +165,11 @@ void ShapeCounter::process_OpenMP() {
 
 #ifdef SHOW_SHAPES
 #ifdef COUNT_SHAPES_USING_OPEN_MP // Cheaper to enlist the found shape here and display the whole list at the end
-					oss<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameLastP<<']';
+					oss<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameP4<<']';
 					itLastLocalItem = localShapes.insert_after(itLastLocalItem, oss.str());
 					oss.str(""); oss.clear();
 #else // COUNT_SHAPES_USING_OPEN_MP not defined - display directly the found shape
-					cout<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameLastP<<"] ";
+					cout<<'['<<nameP1<<nameP2<<pointNames[p3]<<nameP4<<"] ";
 #endif // COUNT_SHAPES_USING_OPEN_MP defined or not
 #endif // SHOW_SHAPES
 				}

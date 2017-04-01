@@ -46,7 +46,6 @@ protected:
 	typedef unsigned long BlockType;
 
 	std::vector<boost::dynamic_bitset<BlockType>> lineMembers;	///< the indices of the members of each line
-	std::vector<std::vector<size_t>> lineMembersByRank;			///< for each line a vector of pointIdx arranged by rank
 	std::vector<boost::dynamic_bitset<BlockType>> connections;	///< points connectivity matrix
 	std::vector<boost::dynamic_bitset<BlockType>> membership;	///< membership of points to the lines
 

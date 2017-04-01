@@ -22,7 +22,6 @@ using namespace boost;
 
 ShapeCounter::ShapeCounter(const vector<vector<string>> &lines) {
 	lineMembers.reserve(L = lines.size());
-	lineMembersByRank.reserve(L);
 	map<string, size_t> pointsIndices;
 	for(size_t lineIdx = 0ULL; lineIdx < L; ++lineIdx) {
 		const auto &line = lines[lineIdx];
@@ -61,7 +60,6 @@ ShapeCounter::ShapeCounter(const vector<vector<string>> &lines) {
 			membershipAsRanks[pointIdx][lineIdx] = pointRank;
 		}
 		lineMembers.emplace_back(memberIndicesBitset);
-		lineMembersByRank.emplace_back(memberIndices);
 	}
 
 #ifdef SHOW_CONFIG
@@ -79,19 +77,8 @@ ShapeCounter::ShapeCounter(const vector<vector<string>> &lines) {
 		cout<<"\b}"<<endl;
 	}
 
-	for(size_t i = 0ULL; i < L; ++i) {
-		cout<<'L'<<i<<": members {"<<lineMembers[i]<<" that is points ";
-		for(const auto pIdx : lineMembersByRank[i]) {
-			cout<<
-#ifdef SHOW_SHAPES
-				pointNames[pIdx]
-#else // SHOW_SHAPES
-				pIdx
-#endif // SHOW_SHAPES
-				<<' ';
-		}
-		cout<<"\b}"<<endl;
-	}
+	for(size_t i = 0ULL; i < L; ++i)
+		cout<<'L'<<i<<": members {"<<lineMembers[i]<<'}'<<endl;
 
 	cout<<endl;
 #endif // SHOW_CONFIG
