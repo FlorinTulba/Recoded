@@ -1,4 +1,9 @@
 *.[bB][aA][kK]
 *.class
-*.obj
 *.exe
+*.obj
+*.opensdf
+*.pdb
+*.sdf
+*.suo
+CountShapes/C++/x64
