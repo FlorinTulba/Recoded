@@ -1,9 +1,12 @@
 *.[bB][aA][kK]
 *.class
 *.exe
+*.o
 *.obj
 *.opensdf
 *.pdb
 *.sdf
 *.suo
+UnionFind/.*
+UnionFind/Makefile
 CountShapes/C++/x64
