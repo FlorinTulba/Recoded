@@ -199,7 +199,7 @@ if __name__ == "__main__":
 	checkUseCase(vals, errorsCount)
 
 	# Single element array case
-	vals.append(100);
+	vals.append(100)
 	checkUseCase(vals, errorsCount)
 
 	# Sorted array case
