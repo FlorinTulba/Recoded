@@ -7,8 +7,9 @@
 *.pdb
 *.sdf
 *.suo
-.Rhistory
 .RData
+.Rhistory
+CountShapes/C++/x64
+ExpandZeros/CUDA/x64
 UnionFind/.*
 UnionFind/Makefile
-CountShapes/C++/x64
