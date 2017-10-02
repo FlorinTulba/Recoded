@@ -178,7 +178,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="markZeros.cu" />
+    <CudaCompile Include="expandZeros.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cudaSession.cpp" />
@@ -187,7 +187,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cudaSession.h" />
-    <ClInclude Include="markZeros.h" />
+    <ClInclude Include="expandZeros.h" />
     <ClInclude Include="timing.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -15,8 +15,35 @@ Implementation using CUDA for NVIDIA GPUs.
 using namespace std;
 
 CudaSession::CudaSession() {
-	if(cudaSetDevice(0) != cudaSuccess)
-		cerr<<"cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?"<<endl;
+	cudaDeviceProp props;
+	props.asyncEngineCount = 1; // expecting >= 1
+	props.canMapHostMemory = 1; // required, as well
+
+	int devId = 0;
+	if(cudaChooseDevice(&devId, &props) != cudaSuccess) {
+		cerr<<"cudaChooseDevice failed!"<<endl;
+		throw runtime_error("cudaChooseDevice failed!");
+	}
+
+	if(cudaSetDevice(devId) != cudaSuccess) {
+		cerr<<"cudaSetDevice failed!"<<endl;
+		throw runtime_error("cudaSetDevice failed!");
+	}
+	
+	if(cudaGetDeviceProperties(&props, devId) != cudaSuccess) {
+		cerr<<"cudaGetDeviceProperties failed!"<<endl;
+		throw runtime_error("cudaGetDeviceProperties failed!");
+	}
+
+	if(props.asyncEngineCount < 1) {
+		cerr<<"Current GPU cannot execute kernels and simultaneously perform memory transfers!"<<endl;
+		throw runtime_error("asyncEngineCount < 1");
+	}
+
+	if(props.canMapHostMemory == 0) {
+		cerr<<"Current GPU cannot take advantage of pinned host memory!"<<endl;
+		throw runtime_error("canMapHostMemory == 0");
+	}
 }
 
 CudaSession::~CudaSession() {

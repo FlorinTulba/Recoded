@@ -10,6 +10,15 @@ Implementation using CUDA for NVIDIA GPUs.
 #ifndef H_CUDA_SESSION
 #define H_CUDA_SESSION
 
+// Macro for checking the execution of a CUDA instruction / kernel
+// When not successful, it displays an explanation and allows a jump to a certain label
+#define CHECK_CUDA_OP(op, label) \
+	if(op, cudaGetLastError() != cudaSuccess) { \
+		std::cerr<<"Operation " #op " failed because: " \
+				<<cudaGetErrorString(cudaGetLastError())<<std::endl; \
+		goto label; \
+	}
+
 /// Sets up a CUDA session
 class CudaSession {
 public:
