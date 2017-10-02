@@ -9,6 +9,7 @@
 *.suo
 .RData
 .Rhistory
+*.user
 CountShapes/C++/x64
 ExpandZeros/CUDA/x64
 UnionFind/.*

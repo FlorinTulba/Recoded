@@ -9,9 +9,6 @@ Implementation using CUDA for NVIDIA GPUs.
 
 #include "cudaSession.h"
 
-#include <iostream>
-#include <cuda_runtime.h>
-
 using namespace std;
 
 CudaSession::CudaSession() {
@@ -20,33 +17,22 @@ CudaSession::CudaSession() {
 	props.canMapHostMemory = 1; // required, as well
 
 	int devId = 0;
-	if(cudaChooseDevice(&devId, &props) != cudaSuccess) {
-		cerr<<"cudaChooseDevice failed!"<<endl;
+	if(cudaChooseDevice(&devId, &props) != cudaSuccess)
 		throw runtime_error("cudaChooseDevice failed!");
-	}
 
-	if(cudaSetDevice(devId) != cudaSuccess) {
-		cerr<<"cudaSetDevice failed!"<<endl;
+	if(cudaSetDevice(devId) != cudaSuccess)
 		throw runtime_error("cudaSetDevice failed!");
-	}
 	
-	if(cudaGetDeviceProperties(&props, devId) != cudaSuccess) {
-		cerr<<"cudaGetDeviceProperties failed!"<<endl;
+	if(cudaGetDeviceProperties(&props, devId) != cudaSuccess)
 		throw runtime_error("cudaGetDeviceProperties failed!");
-	}
 
-	if(props.asyncEngineCount < 1) {
-		cerr<<"Current GPU cannot execute kernels and simultaneously perform memory transfers!"<<endl;
-		throw runtime_error("asyncEngineCount < 1");
-	}
+	if(props.asyncEngineCount < 1)
+		throw runtime_error("Current GPU cannot execute kernels and simultaneously perform memory transfers!");
 
-	if(props.canMapHostMemory == 0) {
-		cerr<<"Current GPU cannot take advantage of pinned host memory!"<<endl;
-		throw runtime_error("canMapHostMemory == 0");
-	}
+	if(props.canMapHostMemory == 0)
+		throw runtime_error("Current GPU cannot take advantage of pinned host memory!");
 }
 
 CudaSession::~CudaSession() {
-	if(cudaDeviceReset() != cudaSuccess)
-		cerr<<"cudaDeviceReset failed!"<<endl;
+	cudaDeviceReset();
 }
