@@ -19,6 +19,7 @@ Implementation using CUDA for NVIDIA GPUs.
 
 #include "expandZerosCUDA.h"
 #include "expandZerosOpenMP.h"
+#include "align.h"
 #include "timing.h"
 
 #include <vector>
@@ -130,18 +131,19 @@ static void outputMat(const int * const a, size_t m, size_t n, ostream &os = cou
 /// @return true if the GPU returns the expected indices for the rows / columns to reset
 static bool same(const bool * const found, const vector<bool> &expected) {
 	assert(nullptr != found && !expected.empty());
-	for(size_t len = expected.size(), i = 0ULL; i < len; ++i)
-		if(expected[i] != found[i]) {
-			cerr<<"Mismatch: "<<endl<<"\tExpected: ";
-			for(size_t j = 0; j < len; ++j)
-				cerr<<expected[j];
-			cerr<<endl<<"\tReceived: ";
-			for(size_t j = 0; j < len; ++j)
-				cerr<<found[j];
-			cerr<<endl<<endl;
-			return false;
-		}
-	return true;
+
+	if(equal(cbegin(expected), cend(expected), found))
+		return true;
+
+	cerr<<"Mismatch: "<<endl<<"\tExpected: ";
+	copy(cbegin(expected), cend(expected), ostream_iterator<bool>(cerr));
+
+	cerr<<endl<<"\tReceived: ";
+	for(size_t j = 0, len = expected.size(); j < len; ++j)
+		cerr<<found[j];
+	cerr<<endl<<endl;
+	
+	return false;
 }
 
 /// Resets the vector of found rows / columns for reprocessing by a different algorithm
@@ -182,7 +184,9 @@ void main() {
 		uniform_int_distribution<size_t>
 			mRand(15, mMax-1), nRand(15, nMax-1);
 
-		const unique_ptr<int[]> origMat = make_unique<int[]>(size_t(dimAMax * sizeof(int)));
+		// Aligned allocation helps preventing false sharing in the OpenMP algorithm version
+		AlignedMemRAII<int> origMat(ArrayRequest((size_t)dimAMax), l1CacheLineSz());
+		
 		int *a = nullptr;
 		CudaRAII<void*> pinnedMatA(function<cudaError_t(void**, size_t)>(::cudaMallocHost),
 								   ::cudaFreeHost,
@@ -236,9 +240,11 @@ void main() {
 		}
 
 		cout<<"Total time CUDA: "<<timerCUDA.elapsed()<<"s for "<<totalElems<<" elements in "
-			<<TIMES<<" matrices, which means "<<timerCUDA.elapsed() * 1e9 / totalElems<<"ns/element"<<endl;
+			<<TIMES<<" matrices, which means "<<timerCUDA.elapsed() * 1e9 / totalElems
+			<<"ns/element"<<endl;
 		cout<<"Total time OpenMP: "<<timerOpenMP.elapsed()<<"s for "<<totalElems<<" elements in "
-			<<TIMES<<" matrices, which means "<<timerOpenMP.elapsed() * 1e9 / totalElems<<"ns/element"<<endl;
+			<<TIMES<<" matrices, which means "<<timerOpenMP.elapsed() * 1e9 / totalElems
+			<<"ns/element"<<endl;
 
 		timerCUDA.done();
 		timerOpenMP.done();

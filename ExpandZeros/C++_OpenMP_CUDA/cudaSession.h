@@ -63,6 +63,11 @@ public:
 		}
 	}
 
+	CudaRAII(const CudaRAII&) = delete;
+	CudaRAII(CudaRAII&&) = delete;
+	void operator=(const CudaRAII&) = delete;
+	void operator=(CudaRAII&&) = delete;
+
 	/// Releases the resource
 	~CudaRAII() {
 		destructFn(resource);
@@ -89,8 +94,7 @@ struct KernelLaunchConfig {
 };
 
 /// Sets up a CUDA session
-class CudaSession {
-public:
+struct CudaSession {
 	CudaSession(); ///< sets the current device
 
 	/// cudaDeviceReset must be called before exiting in order for profiling and

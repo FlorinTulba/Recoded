@@ -183,6 +183,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile Include="expandZeros.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="align.cpp" />
     <ClCompile Include="colRanges.cpp" />
     <ClCompile Include="cudaSession.cpp" />
     <ClCompile Include="expandZerosCUDA.cpp" />
@@ -191,6 +192,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <ClCompile Include="timing.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="align.h" />
     <ClInclude Include="colRanges.h" />
     <ClInclude Include="cudaSession.h" />
     <ClInclude Include="expandZerosCUDA.h" />
