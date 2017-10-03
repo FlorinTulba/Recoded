@@ -1,3 +1,12 @@
+/*
+Given a matrix, for any element with value 0,
+set all elements from the corresponding row and column on 0, as well.
+
+Implementations using OpenMP and CUDA for NVIDIA GPUs.
+
+@2017 Florin Tulba (florintulba@yahoo.com)
+*/
+
 #include "expandZerosOpenMP.h"
 #include "colRanges.h"
 #include "align.h"

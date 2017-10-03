@@ -2,7 +2,7 @@
 Given a matrix, for any element with value 0,
 set all elements from the corresponding row and column on 0, as well.
 
-Implementation using CUDA for NVIDIA GPUs.
+Implementations using OpenMP and CUDA for NVIDIA GPUs.
 
 @2017 Florin Tulba (florintulba@yahoo.com)
 */

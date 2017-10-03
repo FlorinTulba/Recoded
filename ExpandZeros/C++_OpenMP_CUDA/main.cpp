@@ -12,7 +12,7 @@ instead of (C) setting on zero probably way more elements from the affected rows
 
 However, only solution (C) is in-place, which is the reason why it was chosen.
 
-Implementation using CUDA for NVIDIA GPUs.
+Implementations using OpenMP and CUDA for NVIDIA GPUs.
 
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
