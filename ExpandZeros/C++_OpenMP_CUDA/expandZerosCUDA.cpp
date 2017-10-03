@@ -7,9 +7,8 @@ Implementation using CUDA for NVIDIA GPUs.
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
-#include "expandZeros.h"
-
-#include <vector>
+#include "expandZerosCUDA.h"
+#include "colRanges.h"
 
 using namespace std;
 
@@ -38,23 +37,13 @@ static void clearColumns(int *a, size_t m, size_t n,
 		toCol = n - 1ULL;
 	assert(nullptr != a && nullptr != foundCols && fromCol <= toCol && toCol < n);
 
-	// Mapping: start column - count of consecutive columns to reset
-	vector<pair<size_t, size_t>> colRanges;
-	colRanges.reserve(toCol - fromCol + 1ULL);
-	for(size_t c = fromCol; c <= toCol; ++c)
-		if(foundCols[c]) {
-			// Find how many consecutive columns (after c) need to be set on 0
-			size_t c1 = c + 1ULL;
-			for(; c1 <= toCol && foundCols[c1]; ++c1);
-			colRanges.emplace_back(c, c1 - c);
-			c = c1;
-		}
+	ColRanges colRanges;
+	buildColRanges(colRanges, foundCols, n, fromCol, toCol);
 	if(colRanges.empty())
 		return;
+
 	for(size_t r = 0ULL, rowStart = 0ULL; r < m; ++r, rowStart += n)
-		for(const auto &colRange : colRanges)
-			memset((void*)&a[rowStart + colRange.first], 0,
-			sizeof(int) * colRange.second); // sets on zero a range of consecutive columns
+		clearColRangesFromRow(colRanges, &a[rowStart]);
 }
 
 /**
@@ -67,8 +56,10 @@ the indices of the rows to be reset and performs this task
 - the GPU uses 2 streams, to be able to simultaneously process a new column batch
 and copy on host the results for the previous batch
 */
-cudaError_t reportAndExpandZeros(int *a, unsigned m, unsigned n,
-								 bool *foundRows, bool *foundCols) {
+cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
+									 bool *foundRows, bool *foundCols) {
+	assert(nullptr != a && m > 0U && n > 0U && nullptr != foundRows && nullptr != foundCols);
+
 	const unsigned szA = m * n,
 		blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 	int *devA = nullptr;
@@ -120,7 +111,6 @@ cudaError_t reportAndExpandZeros(int *a, unsigned m, unsigned n,
 		// Launch a single block of THREADS_PER_BLOCK threads in this stream
 		klc.stream = stream[strIdx];
 		launchMarkZerosKernel(klc, devA, szA, n, blIdx, devFoundRows, devFoundCols);
-		CHECK_CUDA_KERNEL_LAUNCH(markZeros);
 
 		// Last block contains the remainder of the columns colsForLastBlock
 		const size_t affectedCols =

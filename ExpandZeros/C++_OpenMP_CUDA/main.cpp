@@ -17,7 +17,8 @@ Implementation using CUDA for NVIDIA GPUs.
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
-#include "expandZeros.h"
+#include "expandZerosCUDA.h"
+#include "expandZerosOpenMP.h"
 #include "timing.h"
 
 #include <vector>
@@ -26,6 +27,8 @@ Implementation using CUDA for NVIDIA GPUs.
 #include <fstream>
 #include <iomanip>
 #include <random>
+#include <memory>
+#include <omp.h>
 
 using namespace std;
 
@@ -141,6 +144,12 @@ static bool same(const bool * const found, const vector<bool> &expected) {
 	return true;
 }
 
+/// Resets the vector of found rows / columns for reprocessing by a different algorithm
+static void clearFound(bool * const found, size_t count) {
+	for(size_t i = 0ULL; i < count; ++i)
+		found[i] = false;
+}
+
 /**
 Defines a matrix A[m rows by n columns] and sends it to the GPU.
 Then it performs the following loop:
@@ -148,6 +157,17 @@ Then it performs the following loop:
 */
 void main() {
 	try {
+		// Ensure control over the number of threads during the application
+		if(omp_get_dynamic())
+			omp_set_dynamic(0);
+
+		// Use as many threads as processors
+		omp_set_num_threads(omp_get_num_procs());
+
+		// Ensure no nested parallelism
+		if(omp_get_nested())
+			omp_set_nested(0);
+
 		CudaSession cudaSession;
 
 		enum { TIMES = 1000 }; // iterations count
@@ -162,6 +182,7 @@ void main() {
 		uniform_int_distribution<size_t>
 			mRand(15, mMax-1), nRand(15, nMax-1);
 
+		const unique_ptr<int[]> origMat = make_unique<int[]>(size_t(dimAMax * sizeof(int)));
 		int *a = nullptr;
 		CudaRAII<void*> pinnedMatA(function<cudaError_t(void**, size_t)>(::cudaMallocHost),
 								   ::cudaFreeHost,
@@ -176,31 +197,51 @@ void main() {
 										(void*&)foundCols, nMax * sizeof(bool));
 
 		// Testing TIMES matrices of random sizes and with random elements
-		Timer timer(false);
+		Timer timerCUDA(false), timerOpenMP(false);
 		size_t totalElems = 0ULL; // Count of the analyzed elements of all matrices from all iterations
 		vector<bool> checkRows, checkCols; // Correct rows / columns containing values of 0
 		for(int i = 0; i < TIMES; ++i) {
 			// Init random dimensions and matrix
 			const size_t m = mRand(randGen),
 				n = nRand(randGen),
-				dimA = m * n;
-			totalElems += dimA;
-			initMat(a, m, n, dimA, origZerosPercentage, checkRows, checkCols);
+				dimMat = m * n;
+			totalElems += dimMat;
+			initMat(origMat.get(), m, n, dimMat, origZerosPercentage, checkRows, checkCols);
+
+			// copy the original to be modified by the CUDA algorithm version
+			memcpy_s((void*)a, size_t(dimAMax * sizeof(int)),
+					 (const void*)origMat.get(), size_t(dimMat * sizeof(int)));
 
 			// Expand the zeros from the matrix while timing the operation
-			timer.resume();
-			reportAndExpandZeros(a, (unsigned)m, (unsigned)n, foundRows, foundCols);
-			timer.pause();
+			timerCUDA.resume();
+			reportAndExpandZerosCUDA(a, (unsigned)m, (unsigned)n, foundRows, foundCols);
+			timerCUDA.pause();
+
+			// Validate result
+			assert(same(foundRows, checkRows));
+			assert(same(foundCols, checkCols));
+
+			// Test using OpenMP
+			clearFound(foundRows, m);
+			clearFound(foundCols, n);
+
+			// Expand the zeros directly from the original matrix while timing the operation
+			timerOpenMP.resume();
+			reportAndExpandZerosOpenMP(origMat.get(), (long)m, (long)n, foundRows, foundCols);
+			timerOpenMP.pause();
 
 			// Validate result
 			assert(same(foundRows, checkRows));
 			assert(same(foundCols, checkCols));
 		}
 
-		cout<<"Total time: "<<timer.elapsed()<<"s for "<<totalElems<<" elements in "
-			<<TIMES<<" matrices, which means "<<timer.elapsed() * 1e9 / totalElems<<"ns/element"<<endl;
+		cout<<"Total time CUDA: "<<timerCUDA.elapsed()<<"s for "<<totalElems<<" elements in "
+			<<TIMES<<" matrices, which means "<<timerCUDA.elapsed() * 1e9 / totalElems<<"ns/element"<<endl;
+		cout<<"Total time OpenMP: "<<timerOpenMP.elapsed()<<"s for "<<totalElems<<" elements in "
+			<<TIMES<<" matrices, which means "<<timerOpenMP.elapsed() * 1e9 / totalElems<<"ns/element"<<endl;
 
-		timer.done();
+		timerCUDA.done();
+		timerOpenMP.done();
 	} catch(runtime_error &e) {
 		cerr<<e.what()<<endl;
 	}

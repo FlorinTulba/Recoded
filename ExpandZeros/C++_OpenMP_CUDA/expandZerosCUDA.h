@@ -7,8 +7,8 @@ Implementation using CUDA for NVIDIA GPUs.
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
-#ifndef H_EXPAND_ZEROS
-#define H_EXPAND_ZEROS
+#ifndef H_EXPAND_ZEROS_CUDA
+#define H_EXPAND_ZEROS_CUDA
 
 #include "cudaSession.h"
 
@@ -20,8 +20,8 @@ enum {
 Expands the zeros from a[m x n]
 Sets on true the indices from foundRows and foundCols where the original zeros were found.
 */
-cudaError_t reportAndExpandZeros(int *a, unsigned m, unsigned n,
-								 bool *foundRows, bool *foundCols);
+cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
+									 bool *foundRows, bool *foundCols);
 
 /**
 Launches markZeros CUDA kernel
@@ -40,4 +40,4 @@ void launchMarkZerosKernel(const KernelLaunchConfig &kernelLaunchConfig,
 						   unsigned szA, unsigned n, unsigned blIdx,
 						   bool * const foundRows, bool * const foundCols);
 
-#endif // H_EXPAND_ZEROS
+#endif // H_EXPAND_ZEROS_CUDA

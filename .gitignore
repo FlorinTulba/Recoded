@@ -11,6 +11,6 @@
 .Rhistory
 *.user
 CountShapes/C++/x64
-ExpandZeros/CUDA/x64
+ExpandZeros/C++_OpenMP_CUDA/x64
 UnionFind/.*
 UnionFind/Makefile

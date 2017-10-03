@@ -7,7 +7,7 @@ Implementation using CUDA for NVIDIA GPUs.
 @2017 Florin Tulba (florintulba@yahoo.com)
 */
 
-#include "expandZeros.h"
+#include "expandZerosCUDA.h"
 
 using namespace std;
 
@@ -52,4 +52,5 @@ void launchMarkZerosKernel(const KernelLaunchConfig &kernelLaunchConfig,
 	markZeros<<<kernelLaunchConfig.blocksCount, kernelLaunchConfig.threadsPerBlock,
 				kernelLaunchConfig.shMemSz, kernelLaunchConfig.stream>>>
 		(a, szA, n, blIdx, foundRows, foundCols);
+	CHECK_CUDA_KERNEL_LAUNCH(markZeros);
 }
