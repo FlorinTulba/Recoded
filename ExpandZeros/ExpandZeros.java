@@ -3,7 +3,7 @@
  * Given a matrix, for any element with value 0,
  * set all elements from the corresponding row and column on 0, as well.
  * 
- * Implementations using OpenMP and CUDA for NVIDIA GPUs.
+ * Multithreading implementation for Java 1.8.
  * 
  * @2017 Florin Tulba (florintulba@yahoo.com)
  * 
@@ -40,6 +40,8 @@ class Range {
  * it.
  */
 public class ExpandZeros {
+	protected static final int processorsCount = Runtime.getRuntime().availableProcessors();
+
 	// generator of random values
 	protected static final Random randGen = new Random(System.nanoTime());
 
@@ -151,22 +153,19 @@ public class ExpandZeros {
 	}
 
 	/**
-	 * Expands all the zeros from the matrix on the corresponding rows and
-	 * columns
+	 * Detects the rows and columns containing the value 0 within the provided
+	 * chunk of data
 	 */
-	public void apply() {
-		assert null != a && m > 0 && n > 0 && dim == m * n && checkRows != null && checkCols != null;
+	protected void findZerosInChunk(int startRow, int pastLastRow) {
+		// Avoids false sharing of foundCols through a local vector
+		BitSet localFoundCols = new BitSet(n);
 
-		foundRows = new BitSet(m);
-		foundCols = new BitSet(n);
-
-		// Detect first the rows / columns containing the value 0
-		for (int r = 0; r < m; ++r) {
+		for (int r = startRow; r < pastLastRow; ++r) {
 			boolean rowContains0 = false;
 			int idx = r * n;
 			for (int c = 0; c < n; ++c) {
 				if (a[idx++] == 0) {
-					foundCols.set(c);
+					localFoundCols.set(c);
 					rowContains0 = true;
 				}
 			}
@@ -175,14 +174,48 @@ public class ExpandZeros {
 									// minimizes false sharing of foundRows
 		}
 
-		ArrayList<Range> colRanges = buildColRanges();
+		// Perform an union of all localFoundCols into foundCols
+		for (int c = 0; c < n; ++c) {
+			if (localFoundCols.get(c) && !foundCols.get(c)) {
+				// Minimizes false sharing of foundCols by reducing writing
+				// operations.
+				// Overwriting events actually don't change the data,
+				// but they invalidate the corresponding L1 cache line from
+				// other threads.
+				// This is however cheaper than a synchronization mechanism.
+				foundCols.set(c);
+			}
+		}
+	}
 
-		// Expand the found zeros in a row-wise manner
-		for (int r = 0; r < m; ++r) {
-			int rowStart = r * n;
+	/**
+	 * Thread detecting the rows and columns containing the value 0 within the
+	 * provided chunk of data
+	 */
+	protected class ZerosDetector extends Thread {
+		protected int startRow; // first row to analyze
+		protected int pastLastRow; // the index after the last row to analyze
+
+		public ZerosDetector(int startRow_, int pastLastRow_) {
+			startRow = startRow_;
+			pastLastRow = pastLastRow_;
+		}
+
+		@Override
+		public void run() {
+			findZerosInChunk(startRow, pastLastRow);
+		}
+	}
+
+	/**
+	 * Expands the zeros from the rows and columns containing an original 0 in
+	 * the provided chunk of data
+	 */
+	protected void expandZerosInChunk(ArrayList<Range> colRanges, int startRow, int pastLastRow) {
+		for (int r = startRow; r < pastLastRow; ++r) {
+			final int rowStart = r * n;
 
 			// Not using the merge of consecutive rows containing value 0
-			// (technique used by the CUDA algorithm)
 			// since the merge might cover rows tackled by a different thread
 			if (foundRows.get(r)) {
 				Arrays.fill(a, rowStart, rowStart + n, 0);
@@ -194,6 +227,97 @@ public class ExpandZeros {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Thread expanding the zeros from the rows and columns containing an
+	 * original 0 in the provided chunk of data
+	 */
+	protected class ZerosExpander extends Thread {
+		protected ArrayList<Range> colRanges; // which columns need to be set on
+												// 0 on each row
+		protected int startRow; // first row to analyze
+		protected int pastLastRow; // the index after the last row to analyze
+
+		public ZerosExpander(ArrayList<Range> colRanges_, int startRow_, int pastLastRow_) {
+			colRanges = colRanges_;
+			startRow = startRow_;
+			pastLastRow = pastLastRow_;
+		}
+
+		@Override
+		public void run() {
+			expandZerosInChunk(colRanges, startRow, pastLastRow);
+		}
+	}
+
+	/**
+	 * Expands all the zeros from the matrix on the corresponding rows and
+	 * columns
+	 */
+	public void apply() {
+		assert null != a && m > 0 && n > 0 && dim == m * n && checkRows != null && checkCols != null;
+
+		foundRows = new BitSet(m);
+		foundCols = new BitSet(n);
+
+		ArrayList<Thread> threads = new ArrayList<>();
+
+		// Distribute several consecutive rows to every spawn thread and keep
+		// the remaining ones to be processed in this main thread.
+
+		// There is no point spawning a thread unless it has at least 300000
+		// elements to analyze
+		// The main thread should process most of the time fewer elements, as it
+		// also needs to wait for the created threads
+		int chunkSz = (int) Math.ceil(Math.max((double) m / processorsCount, 300000. / n));
+
+		int chunkStartRow = 0, chunkPastLastRow = chunkSz;
+		int additionalThreads = (int) Math.ceil(m / chunkSz) - 1;
+		while (additionalThreads-- > 0) {
+			threads.add(new ZerosDetector(chunkStartRow, chunkPastLastRow));
+			chunkStartRow = chunkPastLastRow;
+			chunkPastLastRow += chunkSz;
+		}
+
+		for (Thread t : threads)
+			t.start();
+
+		findZerosInChunk(chunkStartRow, m);
+
+		for (Thread t : threads)
+			for (;;)
+				try {
+					t.join();
+					break; // join next thread
+				} catch (InterruptedException e1) {
+					continue; // just retry joining t
+				}
+
+		final ArrayList<Range> colRanges = buildColRanges();
+
+		chunkStartRow = 0;
+		chunkPastLastRow = chunkSz;
+		additionalThreads = threads.size();
+		while (additionalThreads-- > 0) {
+			threads.set(additionalThreads, new ZerosExpander(colRanges, chunkStartRow, chunkPastLastRow));
+			chunkStartRow = chunkPastLastRow;
+			chunkPastLastRow += chunkSz;
+		}
+
+		for (Thread t : threads)
+			t.start();
+
+		expandZerosInChunk(colRanges, chunkStartRow, m);
+
+		for (Thread t : threads)
+			for (;;)
+				try {
+					t.join();
+					break; // join next thread
+				} catch (InterruptedException e1) {
+					continue; // just retry joining t
+				}
 	}
 
 	/**
