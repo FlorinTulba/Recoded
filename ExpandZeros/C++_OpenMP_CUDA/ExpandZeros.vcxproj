@@ -183,21 +183,26 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <CudaCompile Include="expandZeros.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\common\config.cpp" />
+    <ClCompile Include="..\..\common\util.cpp" />
     <ClCompile Include="align.cpp" />
     <ClCompile Include="colRanges.cpp" />
     <ClCompile Include="cudaSession.cpp" />
     <ClCompile Include="expandZerosCUDA.cpp" />
     <ClCompile Include="expandZerosOpenMP.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="timing.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\common\config.h" />
+    <ClInclude Include="..\..\common\util.h" />
     <ClInclude Include="align.h" />
     <ClInclude Include="colRanges.h" />
     <ClInclude Include="cudaSession.h" />
     <ClInclude Include="expandZerosCUDA.h" />
     <ClInclude Include="expandZerosOpenMP.h" />
-    <ClInclude Include="timing.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="config.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,0 +1,2 @@
+# minimum number of matrix elements that justify creating a new thread for handling them
+MinElemsPerOpenMPThread 1000

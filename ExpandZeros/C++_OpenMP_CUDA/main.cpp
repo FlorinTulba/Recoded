@@ -20,9 +20,10 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 #include "expandZerosCUDA.h"
 #include "expandZerosOpenMP.h"
 #include "align.h"
-#include "timing.h"
+#include "../../common/util.h"
 
 #include <vector>
+#include <iterator>
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -89,7 +90,7 @@ static void inputMat(int **pa, size_t &m, size_t &n, istream &is = cin) {
 		if(!getline(is, line))
 			throw runtime_error("Couldn't read the first line!");
 		istringstream iss(line);
-		if((iss>>m>>n).fail())
+		if(!(iss>>m>>n))
 			throw runtime_error("Couldn't read the size of the matrix!");
 		CHECK_CUDA_OP(cudaMallocHost((void**)pa, m * n * sizeof(int))); // pinned memory
 	}
@@ -100,7 +101,7 @@ static void inputMat(int **pa, size_t &m, size_t &n, istream &is = cin) {
 			throw runtime_error("Couldn't read a new line!");
 		istringstream iss(line);
 		for(size_t c = 0ULL; c < n; ++c, ++idx) {
-			if((iss>>(*pa)[idx]).fail()) // Reading next element from the same row
+			if(!(iss>>(*pa)[idx])) // Reading next element from the same row
 				throw runtime_error("Couldn't read a matrix element!");
 		}
 	}
@@ -132,11 +133,12 @@ static void outputMat(const int * const a, size_t m, size_t n, ostream &os = cou
 static bool same(const bool * const found, const vector<bool> &expected) {
 	assert(nullptr != found && !expected.empty());
 
-	if(equal(cbegin(expected), cend(expected), found))
+	if(equal(CBOUNDS(expected),
+			stdext::make_checked_array_iterator(found, distance(CBOUNDS(expected)))))
 		return true;
 
 	cerr<<"Mismatch: "<<endl<<"\tExpected: ";
-	copy(cbegin(expected), cend(expected), ostream_iterator<bool>(cerr));
+	copy(CBOUNDS(expected), ostream_iterator<bool>(cerr));
 
 	cerr<<endl<<"\tReceived: ";
 	for(size_t j = 0, len = expected.size(); j < len; ++j)
@@ -159,13 +161,6 @@ Then it performs the following loop:
 */
 void main() {
 	try {
-		// Ensure control over the number of threads during the application
-		if(omp_get_dynamic())
-			omp_set_dynamic(0);
-
-		// Use as many threads as processors
-		omp_set_num_threads(omp_get_num_procs());
-
 		// Ensure no nested parallelism
 		if(omp_get_nested())
 			omp_set_nested(0);
@@ -201,8 +196,11 @@ void main() {
 										(void*&)foundCols, nMax * sizeof(bool));
 
 		// Testing TIMES matrices of random sizes and with random elements
-		Timer timerCUDA(false), timerOpenMP(false);
+		// The timers must ignore TIMES, as the size of the matrix is different for each iteration
+		// and only the average required time per element does makes sense in this case
+		Timer timerCUDA("timerCUDA", 1ULL, false), timerOpenMP("timerOpenMP", 1ULL, false);
 		size_t totalElems = 0ULL; // Count of the analyzed elements of all matrices from all iterations
+		
 		vector<bool> checkRows, checkCols; // Correct rows / columns containing values of 0
 		for(int i = 0; i < TIMES; ++i) {
 			// Init random dimensions and matrix
