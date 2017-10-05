@@ -32,38 +32,70 @@ istream& nextRelevantLine(istream &is, string &line) {
 	return is;
 }
 
-Timer::Timer(const std::string &taskName_, size_t repetitions_/* = 1ULL*/) :
+Timer::Timer(const std::string &taskName_, size_t repetitions_/* = 1ULL*/, bool start/* = true*/) :
 		taskName(taskName_),
-		repetitions(repetitions_),
-		// taskName & repetitions are initialized before starting the timer
-		startedAt(high_resolution_clock::now()) {}
+		repetitions((double)repetitions_) {
+	if(0ULL == repetitions_) {
+		static const string err("Don't construct a Timer with repetitions_ = 0!");
+		cerr<<err<<endl;
+		throw invalid_argument(err);
+	}
+	if(start)
+		resume();
+}
 
 Timer::Timer(Timer &&t) :
 		taskName(std::move(t.taskName)),
+		totalTime(std::move(t.totalTime)),
+		lastStart(std::move(t.lastStart)),
 		repetitions(t.repetitions),
-		startedAt(std::move(t.startedAt)) {
-	t.repetitions = 0ULL; // sets t as invalid
+		paused(t.paused),
+		_done(t._done) {
+	t._done = true; // prevents a second time report issued when t is destructed
 }
 
 Timer::~Timer() {
-	const double elapsedS = elapsed(); // harmless call if the Timer isn't valid
-	
-	if(repetitions != 0ULL) // validity check after stopping the timer
-		cout<<"Task '"<<taskName<<"' required: "<< elapsedS / (double)repetitions <<"s!"<<endl;
+	if(!_done) {
+		const double elapsedS = elapsed();
+		cout<<"Task '"<<taskName<<"' required: "<< elapsedS / repetitions <<"s!"<<endl;
+	}
 }
 
 Timer& Timer::operator=(Timer &&t) {
 	if(this != &t) {
 		taskName = std::move(t.taskName);
+		totalTime = std::move(t.totalTime);
+		lastStart = std::move(t.lastStart);
 		repetitions = t.repetitions;
-		startedAt = std::move(t.startedAt);
+		paused = t.paused;
+		_done = t._done;
 
-		t.repetitions = 0ULL; // sets t as invalid
+		t._done = true; // prevents a second time report issued when t is destructed
 	}
 	return *this;
 }
 
 double Timer::elapsed() const {
-	const duration<double> elapsedS = high_resolution_clock::now() - startedAt;
-	return elapsedS.count();
+	if(paused)
+		return totalTime.count();
+
+	return (totalTime + high_resolution_clock::now() - lastStart).count();
+}
+
+void Timer::pause() {
+	if(!paused) {
+		totalTime += high_resolution_clock::now() - lastStart;
+		paused = true;
+	}
+}
+
+void Timer::resume() {
+	if(paused) {
+		paused = false;
+		lastStart = high_resolution_clock::now();
+	}
+}
+
+void Timer::done() {
+	_done = true;
 }

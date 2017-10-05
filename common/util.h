@@ -32,22 +32,33 @@ class Timer {
 protected:
 	std::string taskName;			///< name of the monitored task
 
-	/// how many times is the task performed before stopping the timer. 0 if *this is moved to a different Timer
-	size_t repetitions;
+	std::chrono::duration<double> totalTime; ///< sum of all previously timed intervals
 
-	std::chrono::time_point<std::chrono::high_resolution_clock> startedAt;	///< starting moment
+	std::chrono::time_point<std::chrono::high_resolution_clock> lastStart;	///< the start of the last timed interval
+
+	/// how many times is the task performed before stopping the timer
+	double repetitions; // kept as double, as it is used only in this form
+
+	bool paused = true;	///< switch between pause (or not started) and resumed (or started)
+	bool _done = false;	///< set by done() method, to inhibit the report from the destructor
 
 public:
-	Timer(const std::string &taskName_, size_t repetitions_ = 1ULL); // Starts the timer
+	/// Creates a timer and starts it when the parameter is true
+	Timer(const std::string &taskName_, size_t repetitions_ = 1ULL, bool start = true);
 	Timer(const Timer&) = delete;
 	Timer(Timer &&t);
-	~Timer(); ///< Reports (average) elapsed time for a valid Timer (repetitions != 0ULL)
+	~Timer(); ///< If not inhibited, it reports the duration of the timed process
 
 	void operator=(const Timer&) = delete;
 	Timer& operator=(Timer &&t);
 
-	/// Returns the time elapse since the Timer was started (created)
-	double elapsed() const;
+	void pause();	///< Interrupts the timing until calling resume()
+
+	void resume();	///< Resumes / starts the timing
+
+	void done();	///< Prevents the destructor from reporting the duration of the process
+
+	double elapsed() const;	///< @return the duration of the timed process
 };
 
 #endif // H_UTIL
