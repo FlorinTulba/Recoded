@@ -5,11 +5,13 @@
 *.obj
 *.opensdf
 *.pdb
+*.psess
 *.sdf
 *.suo
 .RData
 .Rhistory
 *.user
+*.vsp
 CountShapes/C++/x64
 ExpandZeros/C++_OpenMP_CUDA/x64
 UnionFind/.*
