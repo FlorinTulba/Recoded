@@ -13,14 +13,21 @@ Required modules:
 import sys
 import random
 import time
+import math
+import multiprocessing
 from itertools import repeat
 from bitarray import bitarray
+from threading import Thread
 
 # Matrix settings
 mMax = 500 # max number of rows
 nMax = 500 # max number of columns
 dimAMax = mMax * nMax # max number of elements
 origZerosPercentage = 4 # Desired percentage of zeros within generated matrices
+
+# Threshold below which a thread should not be created
+MinElemsPerThread = 200000 # minimum number of matrix elements to be processed by a created thread
+processorsCount = multiprocessing.cpu_count()
 
 class ExpandZeros:
 	'''
@@ -86,29 +93,10 @@ class ExpandZeros:
 
 		return True
 
-	def apply(self):
+	def buildColIndices(self):
 		'''
-		Expands all the zeros from the matrix on the corresponding rows and columns
+		extract the indices of the columns containing value 0
 		'''
-		assert [] != self.a and self.m > 0 and self.n > 0 \
-			and self.dim == self.m * self.n \
-			and self.checkRows != None and self.checkCols != None
-
-		# Detects the rows and columns containing the value 0
-		# within the provided chunk of data		
-		self.foundRows = bitarray(self.m * '0')
-		self.foundCols = bitarray(self.n * '0')
-		for r in range(self.m):
-			rowContains0 = False
-			idx = r * self.n
-			for c in range(self.n):
-				if self.a[idx] == 0:
-					self.foundCols[c], rowContains0 = True, True
-				idx += 1
-			if rowContains0:
-				self.foundRows[r] = True
-
-		# extract the indices of the columns containing value 0
 		colIndices = []
 		idx = -1
 		while True:
@@ -117,16 +105,141 @@ class ExpandZeros:
 			except ValueError:
 				break
 			colIndices.append(idx)
-	
-		# Expands the zeros from the rows and columns containing an original 0
-		# in the provided chunk of data
-		for r in range(self.m):
+		return colIndices
+
+	def findZerosInChunk(self, chunkRowsRange):
+		'''
+		Detects the rows and columns containing the value 0
+		within the provided chunk of data
+		'''
+		# Avoids false sharing of foundCols through a local vector
+		localFoundCols = bitarray(self.n * '0')
+
+		for r in chunkRowsRange:
+			rowContains0 = False
+			idx = r * self.n
+			for c in range(self.n):
+				if self.a[idx] == 0:
+					localFoundCols[c], rowContains0 = True, True
+				idx += 1
+			if rowContains0:
+				self.foundRows[r] = True
+
+		# Perform an union of all localFoundCols into foundCols
+		for c in range(self.n):
+			if localFoundCols[c] and not self.foundCols[c]:
+				'''
+				Minimizes false sharing of foundCols by reducing writing operations.
+				Overwriting events actually don't change the data,
+				but they invalidate the corresponding L1 cache line from other threads.
+				This is however cheaper than a synchronization mechanism.
+				'''
+				self.foundCols[c] = True
+
+	class ZerosDetector(Thread):
+		'''
+		Thread detecting the rows and columns containing the value 0
+		within the provided chunk of data
+		'''
+		def __init__(self, outer, chunkRowsRange):
+			Thread.__init__(self)
+			self.outer = outer
+			self.chunkRowsRange = chunkRowsRange # the chunk of data between 2 rows
+
+		def run(self):
+			# Override
+			self.outer.findZerosInChunk(self.chunkRowsRange)
+
+	def expandZerosInChunk(self, colIndices, chunkRowsRange):
+		'''
+		Expands the zeros from the rows and columns containing an original 0
+		in the provided chunk of data
+		'''
+		for r in chunkRowsRange:
 			rowStart = r * self.n
 			if self.foundRows[r]:
 				self.a[rowStart : rowStart + self.n] = repeat(0, self.n)
 			else:
 				for colIdx in colIndices:
 					self.a[rowStart + colIdx] = 0
+
+	class ZerosExpander(Thread):
+		'''
+		Thread expanding the zeros from the rows and columns
+		containing an original 0 in the provided chunk of data
+		'''
+		def __init__(self, outer, colIndices, chunkRowsRange):
+			Thread.__init__(self)
+			self.outer = outer
+			self.colIndices = colIndices # the columns where original zeros were found
+			self.chunkRowsRange = chunkRowsRange # the chunk of data between 2 rows
+
+		def run(self):
+			# Override
+			self.outer.expandZerosInChunk(self.colIndices, self.chunkRowsRange)
+
+	def apply(self):
+		'''
+		Expands all the zeros from the matrix on the corresponding rows and columns
+		'''
+		assert [] != self.a and self.m > 0 and self.n > 0 \
+			and self.dim == self.m * self.n \
+			and self.checkRows != None and self.checkCols != None
+
+		self.foundRows = bitarray(self.m * '0')
+		self.foundCols = bitarray(self.n * '0')
+
+		'''
+		Distribute several consecutive rows to every spawn thread and
+		keep the remaining ones to be processed in this main thread.
+
+		There is no point spawning a thread unless it has a minimum
+		number of elements to analyze.
+		
+		The main thread should process most of the time fewer elements,
+		as it also needs to wait for the created threads.
+		'''
+		chunkSz = int(math.ceil( \
+			max(self.m / processorsCount, \
+				MinElemsPerThread / self.n)))
+		chunkStartRow, chunkPastLastRow = 0, chunkSz
+		additionalThreads = int(math.ceil(self.m / chunkSz)) - 1
+		threads = []
+		while additionalThreads > 0:
+			additionalThreads -= 1
+			threads.append( \
+				ExpandZeros.ZerosDetector(self, \
+					range(chunkStartRow, chunkPastLastRow)))
+			chunkStartRow = chunkPastLastRow
+			chunkPastLastRow += chunkSz
+		for t in threads:
+			t.start()
+
+		self.findZerosInChunk(range(chunkStartRow, self.m))
+
+		for t in threads:
+			t.join()
+
+		colIndices = self.buildColIndices()
+
+		chunkStartRow, chunkPastLastRow = 0, chunkSz
+		additionalThreads = len(threads)
+	
+		while additionalThreads > 0:
+			additionalThreads -= 1
+			threads[additionalThreads] = \
+				ExpandZeros.ZerosExpander(self, \
+					colIndices, \
+					range(chunkStartRow, chunkPastLastRow))
+			chunkStartRow = chunkPastLastRow
+			chunkPastLastRow += chunkSz
+		for t in threads:
+			t.start()
+
+		self.expandZerosInChunk(colIndices, range(chunkStartRow, self.m))
+
+		for t in threads:
+			t.join()
 
 if __name__ == "__main__":
 	random.seed()
