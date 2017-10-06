@@ -10,7 +10,7 @@ Required modules:
 @2017 Florin Tulba (florintulba@yahoo.com)
 '''
 
-import math
+import sys
 import random
 import time
 from itertools import repeat
@@ -108,22 +108,15 @@ class ExpandZeros:
 			if rowContains0:
 				self.foundRows[r] = True
 
-		# pairs like (startColIdx, lenRange) based on self.foundCols
-		colRanges = []
-		idx1, idx0 = 0, -1
+		# extract the indices of the columns containing value 0
+		colIndices = []
+		idx = -1
 		while True:
-			try: # Searching for the 1st True after idx0
-				idx1 = self.foundCols.index(True, idx0 + 1)
+			try: # Searching for the 1st True after idx
+				idx = self.foundCols.index(True, idx + 1)
 			except ValueError:
 				break
-
-			try: # Looking for the 1st 0 after idx1
-				idx0 = self.foundCols.index(True, idx1 + 1)
-			except ValueError:
-				colRanges.append([idx1, self.n - idx1])
-				break
-
-			colRanges.append([idx1, idx0 - idx1])
+			colIndices.append(idx)
 	
 		# Expands the zeros from the rows and columns containing an original 0
 		# in the provided chunk of data
@@ -132,10 +125,8 @@ class ExpandZeros:
 			if self.foundRows[r]:
 				self.a[rowStart : rowStart + self.n] = repeat(0, self.n)
 			else:
-				for startColIdx, lenRange in colRanges:
-					idx = rowStart + startColIdx
-					self.a[idx : idx + lenRange] = repeat(0, lenRange)
-
+				for colIdx in colIndices:
+					self.a[rowStart + colIdx] = 0
 
 if __name__ == "__main__":
 	random.seed()
@@ -149,5 +140,5 @@ if __name__ == "__main__":
 		proc.apply()
 		elapsed += time.perf_counter() - lastStart
 		assert proc.correct()
-	print("Processed", totalElems, "elements in", TIMES, "matrices in", elapsed / 1e9,"s");
-	print("That is", elapsed / totalElems, "ns / element.");
+	print("Processed", totalElems, "elements in", TIMES, "matrices in %.3fs" % elapsed);
+	print("That is %.3fns / element." % (elapsed * 1e9 / totalElems));
