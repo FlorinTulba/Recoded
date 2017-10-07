@@ -16,24 +16,37 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 
 #include <cuda_runtime.h>
 
+/// @return x, so that reference * k == x and k = ceiling(val/reference)
+template<size_t reference>
+__host__ __device__ size_t nextMultipleOf(size_t val) {
+	const size_t rest = val % reference;
+
+	return (rest > 0ULL) ? (val + reference - rest) : val;
+}
+
 // Macro for checking the execution of a CUDA instruction
 // When not successful, it throws runtime_error providing an explanation
 #define CHECK_CUDA_OP(op) \
-	if(op, cudaGetLastError() != cudaSuccess) { \
-		std::ostringstream oss; \
-		oss<<"Operation " #op " failed because: " \
-			<<cudaGetErrorString(cudaGetLastError()); \
-		throw runtime_error(oss.str()); \
+	{ \
+		const cudaError_t errCode = op; \
+		if(errCode != cudaSuccess) { \
+			std::ostringstream oss; \
+			oss<<"Operation " #op " failed because: "<<cudaGetErrorString(errCode); \
+			throw runtime_error(oss.str()); \
+		} \
 	}
 
 // Macro for checking if the launch of a CUDA kernel succeeded.
 // When not successful, it throws runtime_error providing an explanation
 #define CHECK_CUDA_KERNEL_LAUNCH(kernelName) \
-	if(cudaGetLastError() != cudaSuccess) { \
-		std::ostringstream oss; \
-		oss<<"The launch of kernel " #kernelName " failed because: " \
-			<<cudaGetErrorString(cudaGetLastError()); \
-		throw runtime_error(oss.str()); \
+	{ \
+		const cudaError_t errCode = cudaGetLastError(); \
+		if(errCode != cudaSuccess) { \
+			std::ostringstream oss; \
+			oss<<"The launch of kernel " #kernelName " failed because: " \
+				<<cudaGetErrorString(errCode); \
+			throw runtime_error(oss.str()); \
+		} \
 	}
 
 /**

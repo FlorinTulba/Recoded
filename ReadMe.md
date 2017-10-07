@@ -10,7 +10,7 @@ The list of the recoded projects considered so far:
 ![](CountShapes/CountedShapes.jpg)
 - ***[FurthestSortedPair](FurthestSortedPair/)*** - it determines the most distant pair of sorted elements within a random array with O(N log(N)) compares and using O(N) additional space. The red line from the image below connects the identified pair:<br>
 ![](FurthestSortedPair/furthestSortedPair.jpg)
-- ***[ExpandZeros](ExpandZeros/)*** - it expands the zeros found in a matrix on the corresponding rows and columns. Implemented, studied and improved several multithreading algorithms and also a version using the GPU in parallel with the CPU (based on [CUDA](https://en.wikipedia.org/wiki/CUDA))
+- ***[ExpandZeros](ExpandZeros/)*** - it expands the zeros found in a matrix on the corresponding rows and columns. Implemented, studied and improved several multithreading algorithms and also a version using the GPU in parallel with the CPU (based on [CUDA](https://en.wikipedia.org/wiki/CUDA)). Below appear the data transfers between the CPU (host) and the GPU (device) while processing a matrix:<br>![](ExpandZeros/C++_OpenMP_CUDA/cudaTransfersDuringAlg.jpg)<br>The GPU only identifies which rows and columns contain zeros, that is why it returns less data. The transfers towards the CPU happen in parallel with processing more of the input matrix (see the alternating 2, 3 values from the *Stream ID* column)
 - ***[UnionFind](UnionFind/)*** - a data structure with excellent performance used to build sets of elements and for establishing if 2 items belong to the same set. More details can be found [here](https://en.wikipedia.org/wiki/Disjoint-set_data_structure)
 
 * * *

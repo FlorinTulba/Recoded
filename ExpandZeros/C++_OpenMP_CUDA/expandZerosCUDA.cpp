@@ -46,14 +46,6 @@ namespace {
 		for(size_t r = 0ULL, rowStart = 0ULL; r < m; ++r, rowStart += n)
 			clearColRangesFromRow(colRanges, &a[rowStart]);
 	}
-
-	/// @return x, so that reference * k == x and k = ceiling(val/reference)
-	template<size_t reference>
-	size_t nextMultipleOf(size_t val) {
-		static_assert(reference > 1ULL, "The template argument of " __FUNCTION__ " needs to be >= 2!");
-		const size_t rest = val % reference;
-		return (rest > 0ULL) ? (val + reference - rest) : val;
-	}
 } // anonymous namespace
 
 /**
@@ -66,8 +58,8 @@ the indices of the rows to be reset and performs this task
 - the GPU uses 2 streams, to be able to simultaneously process a new column batch
 and copy on host the results for the previous batch
 */
-cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
-									 bool *foundRows, bool *foundCols) {
+void reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
+							  bool *foundRows, bool *foundCols) {
 	assert(nullptr != a && m > 0U && n > 0U && nullptr != foundRows && nullptr != foundCols);
 
 	const unsigned blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -95,24 +87,24 @@ cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 
 	// Simulate 3 normal dynamic device memory allocations (aligned to 256B)
 	const size_t devMemAreaA = nextMultipleOf<256ULL>(size_t(szA * sizeof(int))),
-		devMemAreaFoundRows = nextMultipleOf<256ULL>(size_t(m * sizeof(bool))),
-		totalDevMem = devMemAreaA + devMemAreaFoundRows +
-			size_t(n * sizeof(bool)); // device memory for the foundCols
+		devMemFoundCols = nextMultipleOf<256ULL>(size_t(n) * sizeof(bool)),
+		totalDevMem = devMemAreaA + devMemFoundCols +
+			size_t(m) * sizeof(bool); // device memory for foundRows
 
 	CudaRAII<void*> RAII_devMem(function<cudaError_t(void**, size_t)>(::cudaMalloc),
 								::cudaFree,
 								(void*&)devMem, totalDevMem);
 
 	int * const devA = reinterpret_cast<int*>(devMem);
-	bool * const devFoundRows = reinterpret_cast<bool*>(&devMem[devMemAreaA]);
-	bool * const devFoundCols = reinterpret_cast<bool*>(&devMem[devMemAreaA + devMemAreaFoundRows]);
+	bool * const results = reinterpret_cast<bool*>(&devMem[devMemAreaA]);
+	bool * const devFoundCols = results;
+	bool * const devFoundRows = &results[devMemFoundCols];
 
 	// Copy matrix from host on device
-	CHECK_CUDA_OP(cudaMemcpy((void*)devA, a, szA * sizeof(int), cudaMemcpyHostToDevice));
+	CHECK_CUDA_OP(cudaMemcpyAsync((void*)devA, a, szA * sizeof(int), cudaMemcpyHostToDevice, stream[0]));
 
 	// Initialize the rows and columns (from the device) to be reported as containing original zeros
-	CHECK_CUDA_OP(cudaMemset((void*)devFoundRows, 0, m * sizeof(bool)));
-	CHECK_CUDA_OP(cudaMemset((void*)devFoundCols, 0, n * sizeof(bool)));
+	CHECK_CUDA_OP(cudaMemsetAsync((void*)results, 0, (m + devMemFoundCols) * sizeof(bool), stream[0]));
 
 	static KernelLaunchConfig klc {1U, (unsigned)THREADS_PER_BLOCK, 0U};
 
@@ -126,7 +118,8 @@ cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 
 		// Launch a single block of THREADS_PER_BLOCK threads in this stream
 		klc.stream = stream[strIdx];
-		launchMarkZerosKernel(klc, devA, szA, n, blIdx, devFoundRows, devFoundCols);
+		launchMarkZerosKernel(klc, devA, szA, n, blIdx);
+		// the kernel deduces devFoundCols and devFoundRows from devA, szA and n
 
 		// Last block contains the remainder of the columns colsForLastBlock
 		const size_t affectedCols =
@@ -161,6 +154,4 @@ cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 	// Make sure the found rows arrived on host and then expand the zeros for them
 	CHECK_CUDA_OP(cudaStreamSynchronize(stream[lastStream]));
 	clearRows(a, m, n, foundRows);
-
-	return cudaGetLastError();
 }
