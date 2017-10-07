@@ -12,39 +12,49 @@ Implementation s using OpenMP and CUDA for NVIDIA GPUs.
 
 using namespace std;
 
-/// Sets on 0 all the row elements from `foundRows` in matrix `a` [`m` x `n`]
-static void clearRows(int *a, size_t m, size_t n, const bool * const foundRows) {
-	assert(nullptr != a && nullptr != foundRows);
-	const size_t bytesPerRow = n * sizeof(int);
-	for(size_t r = 0ULL; r < m; ++r)
-		if(foundRows[r]) {
-			// Find how many consecutive rows (after r) need to be set on 0
-			size_t r1 = r + 1ULL;
-			for(; r1 < m && foundRows[r1]; ++r1);
-			memset((void*)&a[r * n], 0, bytesPerRow * (r1 - r));
-			r = r1;
-		}
-}
+namespace {
+	/// Sets on 0 all the row elements from `foundRows` in matrix `a` [`m` x `n`]
+	void clearRows(int *a, size_t m, size_t n, const bool * const foundRows) {
+		assert(nullptr != a && nullptr != foundRows);
+		const size_t bytesPerRow = n * sizeof(int);
+		for(size_t r = 0ULL; r < m; ++r)
+			if(foundRows[r]) {
+				// Find how many consecutive rows (after r) need to be set on 0
+				size_t r1 = r + 1ULL;
+				for(; r1 < m && foundRows[r1]; ++r1);
+				memset((void*)&a[r * n], 0, bytesPerRow * (r1 - r));
+				r = r1;
+			}
+	}
 
-/**
-Clears the columns pointed by `foundCols`[`fromCol` : `toCol`] from matrix `a`[`m` x `n`].
-Traverses the matrix in a row-wise fashion to favor obtaining more cache hits.
-*/
-static void clearColumns(int *a, size_t m, size_t n,
-						 const bool * const foundCols,
-						 size_t fromCol = 0ULL, size_t toCol = 0ULL) {
-	if(toCol == 0ULL)
-		toCol = n - 1ULL;
-	assert(nullptr != a && nullptr != foundCols && fromCol <= toCol && toCol < n);
+	/**
+	Clears the columns pointed by `foundCols`[`fromCol` : `toCol`] from matrix `a`[`m` x `n`].
+	Traverses the matrix in a row-wise fashion to favor obtaining more cache hits.
+	*/
+	void clearColumns(int *a, size_t m, size_t n,
+							 const bool * const foundCols,
+							 size_t fromCol = 0ULL, size_t toCol = 0ULL) {
+		if(toCol == 0ULL)
+			toCol = n - 1ULL;
+		assert(nullptr != a && nullptr != foundCols && fromCol <= toCol && toCol < n);
 
-	ColRanges colRanges;
-	buildColRanges(colRanges, foundCols, n, fromCol, toCol);
-	if(colRanges.empty())
-		return;
+		ColRanges colRanges;
+		buildColRanges(colRanges, foundCols, n, fromCol, toCol);
+		if(colRanges.empty())
+			return;
 
-	for(size_t r = 0ULL, rowStart = 0ULL; r < m; ++r, rowStart += n)
-		clearColRangesFromRow(colRanges, &a[rowStart]);
-}
+		for(size_t r = 0ULL, rowStart = 0ULL; r < m; ++r, rowStart += n)
+			clearColRangesFromRow(colRanges, &a[rowStart]);
+	}
+
+	/// @return x, so that reference * k == x and k = ceiling(val/reference)
+	template<size_t reference>
+	size_t nextMultipleOf(size_t val) {
+		static_assert(reference > 1ULL, "The template argument of " __FUNCTION__ " needs to be >= 2!");
+		const size_t rest = val % reference;
+		return (rest > 0ULL) ? (val + reference - rest) : val;
+	}
+} // anonymous namespace
 
 /**
 Here are the ideas behind the adopted solution:
@@ -60,10 +70,7 @@ cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 									 bool *foundRows, bool *foundCols) {
 	assert(nullptr != a && m > 0U && n > 0U && nullptr != foundRows && nullptr != foundCols);
 
-	const unsigned szA = m * n,
-		blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-	int *devA = nullptr;
-	bool *devFoundRows = nullptr, *devFoundCols = nullptr;
+	const unsigned blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
 	cudaStream_t stream[2]; // using 2 streams
 
@@ -81,15 +88,24 @@ cudaError_t reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 										::cudaStreamDestroy,
 										stream[1]);
 
-	CudaRAII<void*> RAII_devA(function<cudaError_t(void**, size_t)>(::cudaMalloc),
-							  ::cudaFree,
-							  (void*&)devA, size_t(szA * sizeof(int)));
-	CudaRAII<void*> RAII_devFoundRows(function<cudaError_t(void**, size_t)>(::cudaMalloc),
-									  ::cudaFree,
-									  (void*&)devFoundRows, size_t(m * sizeof(bool)));
-	CudaRAII<void*> RAII_devFoundCols(function<cudaError_t(void**, size_t)>(::cudaMalloc),
-									  ::cudaFree,
-									  (void*&)devFoundCols, size_t(n * sizeof(bool)));
+	const unsigned szA = m * n;
+
+	// device memory that covers the input matrix and the 2 output vectors
+	char *devMem = nullptr; // uses char, as its sizeof is 1, so it's easier to compute the offsets
+
+	// Simulate 3 normal dynamic device memory allocations (aligned to 256B)
+	const size_t devMemAreaA = nextMultipleOf<256ULL>(size_t(szA * sizeof(int))),
+		devMemAreaFoundRows = nextMultipleOf<256ULL>(size_t(m * sizeof(bool))),
+		totalDevMem = devMemAreaA + devMemAreaFoundRows +
+			size_t(n * sizeof(bool)); // device memory for the foundCols
+
+	CudaRAII<void*> RAII_devMem(function<cudaError_t(void**, size_t)>(::cudaMalloc),
+								::cudaFree,
+								(void*&)devMem, totalDevMem);
+
+	int * const devA = reinterpret_cast<int*>(devMem);
+	bool * const devFoundRows = reinterpret_cast<bool*>(&devMem[devMemAreaA]);
+	bool * const devFoundCols = reinterpret_cast<bool*>(&devMem[devMemAreaA + devMemAreaFoundRows]);
 
 	// Copy matrix from host on device
 	CHECK_CUDA_OP(cudaMemcpy((void*)devA, a, szA * sizeof(int), cudaMemcpyHostToDevice));
