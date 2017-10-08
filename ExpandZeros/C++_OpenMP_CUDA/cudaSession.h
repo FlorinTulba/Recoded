@@ -10,6 +10,7 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 #ifndef H_CUDA_SESSION
 #define H_CUDA_SESSION
 
+#include <vector>
 #include <functional>
 #include <sstream>
 #include <cassert>
@@ -106,12 +107,39 @@ struct KernelLaunchConfig {
 	}
 };
 
-/// Sets up a CUDA session
-struct CudaSession {
+/// Sets up a CUDA session and preallocates device memory and streams
+class CudaSession {
+protected:
+	void* reservedDevMem = nullptr;	///< memory area preallocated on the device
+	std::vector<cudaStream_t> reservedStreams; ///< user preallocated streams
+
+public:
 	CudaSession(); ///< sets the current device
 
-	/// cudaDeviceReset must be called before exiting in order for profiling and
-	/// tracing tools such as Nsight and Visual Profiler to show complete traces.
+	/// Reserves sz B in device memory if reservedDevMem == nullptr. Otherwise throws logic_error
+	void* reserveDevMem(size_t sz);
+
+	/// Creates a new stream with given flags and priority
+	cudaStream_t createStream(unsigned flags = cudaStreamDefault, int priority = 0);
+
+	/// Destroys all streams
+	void destroyStreams();
+
+	/// Releases the reserved device memory
+	void releaseDevMem();
+
+	/// @return the available streams
+	const std::vector<cudaStream_t>& getReservedStreams() const;
+
+	/// @return the reserved memory, if any, reinterpreting it as char*
+	char* getReservedMem() const;
+
+	/**
+	Releases any device memory and user streams and calls cudaDeviceReset().
+
+	cudaDeviceReset() must be called before exiting in order for profiling and
+	tracing tools such as Nsight and Visual Profiler to show complete traces.
+	*/
 	~CudaSession();
 };
 

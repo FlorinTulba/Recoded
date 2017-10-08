@@ -20,7 +20,8 @@ enum {
 Expands the zeros from a[m x n]
 Sets on true the indices from foundRows and foundCols where the original zeros were found.
 */
-void reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
+void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
+							  int *a, unsigned m, unsigned n,
 							  bool *foundRows, bool *foundCols);
 
 /**

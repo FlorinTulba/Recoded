@@ -21,18 +21,38 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 #include "expandZerosOpenMP.h"
 #include "align.h"
 #include "../../common/util.h"
+#include "../../common/config.h"
 
 #include <vector>
 #include <iterator>
-#include <iostream>
-#include <sstream>
 #include <fstream>
-#include <iomanip>
 #include <random>
-#include <memory>
 #include <omp.h>
 
 using namespace std;
+
+const string& configFile() {
+	static const string result("config.txt");
+	return result;
+}
+
+const map<string, const unique_ptr<IConfigItem>>& Config::props() {
+	static map<string, const unique_ptr<IConfigItem>> pairs;
+
+#define addProp(propName, propType, propDefVal, validator) \
+	pairs.emplace(#propName, make_unique<ConfigItem<propType>>(#propName, propDefVal, validator))
+
+	// Add here all configuration items
+	addProp(TIMES, size_t, 1000ULL, std::make_unique<InRange<size_t>>(1ULL, 10000000ULL));
+	addProp(mMax, size_t, 500ULL, std::make_unique<InRange<size_t>>(16ULL, 10000ULL));
+	addProp(nMax, size_t, 500ULL, std::make_unique<InRange<size_t>>(16ULL, 10000ULL));
+	addProp(ZerosPercentage, double, .04, std::make_unique<InRange<double>>(1e-4, .9999));
+	addProp(MinElemsPerOpenMPThread, size_t, 0ULL, nullptr);
+
+#undef addProp
+
+	return pairs;
+}
 
 /**
 Randomly initializes a matrix with elements in 0..1000 range.
@@ -41,16 +61,15 @@ Randomly initializes a matrix with elements in 0..1000 range.
 @param m the number of rows of the matrix
 @param n the number of columns of the matrix
 @param dimA the number of elements in `a` [`checkRows`.size() * `checkCols`.size()]
-@param origZerosPercentage represents the desired percentage of 0 elements within `a` (range: 0..100)
 @param checkRows reports which rows contain elements equal to 0
 @param checkCols reports which columns contain elements equal to 0
 */
-static void initMat(int *a, size_t m, size_t n, size_t dimA, unsigned origZerosPercentage,
+static void initMat(int *a, size_t m, size_t n, size_t dimA,
 					vector<bool> &checkRows, vector<bool> &checkCols) {
-	assert(nullptr != a &&
-		   origZerosPercentage <= 100U &&
-		   dimA > 0ULL && dimA == m * n);
+	assert(nullptr != a && dimA > 0ULL && dimA == m * n);
 
+	static const double origZerosPercentage =
+		Config::get().valueOf(ConfigItem<double>("ZerosPercentage"), .04);
 	static random_device rd;
 	static mt19937 randGen(rd());
 	static uniform_int_distribution<> uidVal(1, 1000);
@@ -64,7 +83,7 @@ static void initMat(int *a, size_t m, size_t n, size_t dimA, unsigned origZerosP
 
 	// Choose some coordinates to be set to 0
 	uniform_int_distribution<size_t> uidPos(0ULL, dimA-1ULL);
-	const size_t zerosCount = size_t(dimA * origZerosPercentage / 100.);
+	const size_t zerosCount = size_t(dimA * origZerosPercentage);
 	for(size_t i = 0ULL; i<zerosCount; ++i) {
 		const size_t pos = uidPos(randGen),
 			row = pos / n, col = pos % n;
@@ -165,14 +184,19 @@ void main() {
 		if(omp_get_nested())
 			omp_set_nested(0);
 
+		const Config &cfg = Config::get();		
+		const size_t TIMES = cfg.valueOf(ConfigItem<size_t>("TIMES"), 1000ULL), // iterations count
+			mMax = cfg.valueOf(ConfigItem<size_t>("mMax"), 500ULL), // max matrix height
+			nMax = cfg.valueOf(ConfigItem<size_t>("nMax"), 500ULL), // max matrix width
+			dimAMax = mMax*nMax; // max matrix elements
+
 		CudaSession cudaSession;
+		void* reservedDevMem = cudaSession.reserveDevMem(nextMultipleOf<256ULL>(dimAMax * sizeof(int)) +
+														 nextMultipleOf<256>(nMax) +
+														 mMax);
 
-		enum { TIMES = 1000 }; // iterations count
-
-		// Max matrix dimensions
-		enum { mMax = 500, nMax = 500, dimAMax = mMax*nMax };
-
-		enum { origZerosPercentage = 4 }; // Desired percentage of zeros within generated matrices
+		cudaSession.createStream();
+		cudaSession.createStream();
 
 		random_device rd;
 		mt19937 randGen(rd());
@@ -208,7 +232,7 @@ void main() {
 				n = nRand(randGen),
 				dimMat = m * n;
 			totalElems += dimMat;
-			initMat(origMat.get(), m, n, dimMat, origZerosPercentage, checkRows, checkCols);
+			initMat(origMat.get(), m, n, dimMat, checkRows, checkCols);
 
 			// copy the original to be modified by the CUDA algorithm version
 			memcpy_s((void*)a, size_t(dimAMax * sizeof(int)),
@@ -216,7 +240,7 @@ void main() {
 
 			// Expand the zeros from the matrix while timing the operation
 			timerCUDA.resume();
-			reportAndExpandZerosCUDA(a, (unsigned)m, (unsigned)n, foundRows, foundCols);
+			reportAndExpandZerosCUDA(cudaSession, a, (unsigned)m, (unsigned)n, foundRows, foundCols);
 			timerCUDA.pause();
 
 			// Validate result
@@ -246,6 +270,12 @@ void main() {
 
 		timerCUDA.done();
 		timerOpenMP.done();
+
+		cudaSession.releaseDevMem(); // optional
+		cudaSession.destroyStreams(); // optional
+
+	} catch(logic_error &e) {
+		cerr<<e.what()<<endl;
 	} catch(runtime_error &e) {
 		cerr<<e.what()<<endl;
 	}

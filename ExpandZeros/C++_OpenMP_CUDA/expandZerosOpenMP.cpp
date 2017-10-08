@@ -18,38 +18,18 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 
 using namespace std;
 
-const string& configFile() {
-	static const string result("config.txt");
-	return result;
-}
-
-const map<string, const unique_ptr<IConfigItem>>& Config::props() {
-	static map<string, const unique_ptr<IConfigItem>> pairs;
-
-#define addProp(propName, propType, propDefVal) \
-	pairs.emplace(#propName, make_unique<ConfigItem<propType>>(#propName, propDefVal))
-
-	// Add here all configuration items
-	addProp(MinElemsPerOpenMPThread, size_t, 0ULL);
-
-#undef addProp
-
-	return pairs;
-}
-
 namespace {
 	const int processorsCount = omp_get_num_procs();
 
 	// Don't initialize the singleton and read the value within reportAndExpandZerosOpenMP,
 	// as this shouldn't be timed
-	const size_t *pMinElemsPerThread = Config::get().valueOf(ConfigItem<size_t>("MinElemsPerOpenMPThread"));
-	const size_t minElemsPerThread = (pMinElemsPerThread!=nullptr) ? *pMinElemsPerThread : 0ULL;
+	const size_t minElemsPerThread =
+		Config::get().valueOf(ConfigItem<size_t>("MinElemsPerOpenMPThread"), 0ULL);
 } // anonymous namespace
 
 void reportAndExpandZerosOpenMP(int *a, long m, long n,
 								bool *foundRows, bool *foundCols) {
-	assert(nullptr != a && m > 0L && n > 0L && nullptr != foundRows && nullptr != foundCols &&
-		   pMinElemsPerThread != nullptr);
+	assert(nullptr != a && m > 0L && n > 0L && nullptr != foundRows && nullptr != foundCols);
 
 	// There is no point spawning a thread unless it has at least minElemsPerThread elements to analyze.
 	// The main thread should process most of the time fewer elements,

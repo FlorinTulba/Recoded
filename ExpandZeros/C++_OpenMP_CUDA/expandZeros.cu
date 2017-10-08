@@ -43,8 +43,8 @@ __global__ void markZeros(const int * const __restrict__ a,
 			foundRows[pos / n] = shouldMarkCol = true;
 	}
 
-	if(shouldMarkCol)
-		foundCols[pos % n] = true;
+	// Assigning only if shouldMarkCol is true produces unnecessary divergence
+	foundCols[pos % n] = shouldMarkCol;
 }
 
 void launchMarkZerosKernel(const KernelLaunchConfig &kernelLaunchConfig,

@@ -1,2 +1,18 @@
-# minimum number of matrix elements that justify creating a new thread for handling them
+# Number of iterations to run the algorithms for more accurate times.
+# Must be >= 1
+TIMES 1000
+
+# Maximum matrix height
+# Must be >= 16
+mMax 500
+
+# Maximum matrix width
+# Must be >= 16
+nMax 500
+
+# What percent of the matrix original elements should be zeros
+# Accepted range: (0,1)
+ZerosPercentage .04
+
+# Minimum number of matrix elements that justify creating a new thread for handling them
 MinElemsPerOpenMPThread 1000
