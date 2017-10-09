@@ -19,10 +19,11 @@ enum {
 /**
 Expands the zeros from a[m x n]
 Sets on true the indices from foundRows and foundCols where the original zeros were found.
+foundCols starts at results; foundRows starts at results + n
 */
 void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 							  int *a, unsigned m, unsigned n,
-							  bool *foundRows, bool *foundCols);
+							  bool *results);
 
 /**
 Launches markZeros CUDA kernel
@@ -32,11 +33,9 @@ Launches markZeros CUDA kernel
 After the bytes for a, there are 2 regions for foundCols and foundRows.
 @param szA the number of elements of `a`
 @param n the number of columns of `a`
-@param blIdx the index of a batch of consecutive columns to be analyzed within a separate stream
-by a block of THREADS_PER_BLOCK threads
 */
 void launchMarkZerosKernel(const KernelLaunchConfig &kernelLaunchConfig,
 						   const int * const a,
-						   unsigned szA, unsigned n, unsigned blIdx);
+						   unsigned szA, unsigned n);
 
 #endif // H_EXPAND_ZEROS_CUDA

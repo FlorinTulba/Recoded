@@ -22,36 +22,40 @@ computing them first in shared memory and copying them afterwards to global memo
 After the bytes for a, there are 2 regions for foundCols and foundRows.
 @param szA the number of elements of `a`
 @param n the number of columns of `a`
-@param blIdx the index of a batch of consecutive columns to be analyzed within a separate stream
 by a block of THREADS_PER_BLOCK threads
 */
 __global__ void markZeros(const int * const __restrict__ a,
-						  unsigned szA, unsigned n, unsigned blIdx) {
-	unsigned pos = blIdx * THREADS_PER_BLOCK + threadIdx.x;
+						  unsigned szA, unsigned n) {
+	unsigned pos = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
 	if(pos >= n) // pos needs to be on the 1st row
 		return;
 
 	// deduce foundCols and foundRows from a, szA and n
-	bool * const foundCols = const_cast<bool*>(reinterpret_cast<const bool*>(a)) +
+	bool * const foundCols = const_cast<bool*>((const bool*)a) +
 		(ptrdiff_t)nextMultipleOf<256ULL>(size_t(szA) * sizeof(int));
-	bool * const foundRows = &foundCols[nextMultipleOf<256ULL>(size_t(n))];
+	bool * const foundRows = &foundCols[size_t(n)];
 
 	// Traverse an entire column
 	bool shouldMarkCol = false;
 	for(; pos < szA; pos += n) {
 		if(a[pos] == 0)
+			// No matter how unsynchronized the warps in a block are,
+			// or if they belong to different blocks,
+			// all threads (from that warp) which find a 0 on row floor(pos/n)
+			// will write the same 'true' value in foundRows[pos/n]
 			foundRows[pos / n] = shouldMarkCol = true;
 	}
 
-	// Assigning only if shouldMarkCol is true produces unnecessary divergence
+	// Assigning only if shouldMarkCol is true produces unnecessary divergence.
+	// Besides, this spares the initialization of foundCols
 	foundCols[pos % n] = shouldMarkCol;
 }
 
 void launchMarkZerosKernel(const KernelLaunchConfig &kernelLaunchConfig,
 						   const int * const a,
-						   unsigned szA, unsigned n, unsigned blIdx) {
-	markZeros<<<kernelLaunchConfig.blocksCount, kernelLaunchConfig.threadsPerBlock,
-				kernelLaunchConfig.shMemSz, kernelLaunchConfig.stream>>>
-		(a, szA, n, blIdx);
+						   unsigned szA, unsigned n) {
+	markZeros<<<kernelLaunchConfig.blocksCount(), kernelLaunchConfig.threadsPerBlock(),
+				kernelLaunchConfig.sharedMemSize(), kernelLaunchConfig.stream()>>>
+		(a, szA, n);
 	CHECK_CUDA_KERNEL_LAUNCH(markZeros);
 }

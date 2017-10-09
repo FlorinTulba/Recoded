@@ -16,3 +16,13 @@ ZerosPercentage .04
 
 # Minimum number of matrix elements that justify creating a new thread for handling them
 MinElemsPerOpenMPThread 1000
+
+# Minimum number of matrix elements that justify using the GPU
+MinElemsForGPU 0
+
+# What is the ratio of the matrix elements to be assigned to the GPU?
+# The expected value is between 0 and 1.
+# 0 means the CPU inspects the whole matrix.
+# Value x in (0,1] means that the GPU processes C = ceiling(x*M) matrix rows,
+# unless C < MinElemsForGPU, where M is the total number of matrix elements.
+WorkQuotaGPU 0.1

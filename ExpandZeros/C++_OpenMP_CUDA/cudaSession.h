@@ -89,22 +89,30 @@ public:
 };
 
 /// Kernel launch configuration
-struct KernelLaunchConfig {
-	unsigned blocksCount;		///< the number of blocks to execute the kernel
-	unsigned threadsPerBlock;	///< how many threads does a block contain
-	unsigned shMemSz;			///< the size of the shared memory for a block
-	cudaStream_t stream;		///< the stream where to execute the kernel
+class KernelLaunchConfig {
+protected:
+	unsigned _blocksCount;		///< the number of blocks to execute the kernel
+	unsigned _threadsPerBlock;	///< how many threads does a block contain
+	unsigned _shMemSz;			///< the size of the shared memory for a block
+	cudaStream_t _stream;		///< the stream where to execute the kernel
 
+public:
 	KernelLaunchConfig(unsigned blocksCount_ = 1U,
 					   unsigned threadsPerBlock_ = 32U,
 					   unsigned shMemSz_ = 0U,
-					   cudaStream_t stream_ = nullptr) :
-			blocksCount(blocksCount_),
-			threadsPerBlock(threadsPerBlock_),
-			shMemSz(shMemSz_),
-			stream(stream_) {
-		assert(blocksCount > 0U && threadsPerBlock > 0U);
-	}
+					   cudaStream_t stream_ = nullptr);
+
+	void setBlocksCount(unsigned blocksCount_);
+	inline unsigned blocksCount() const { return _blocksCount; }
+
+	void setThreadsPerBlock(unsigned threadsPerBlock_);
+	inline unsigned threadsPerBlock() const { return _threadsPerBlock; }
+
+	void setSharedMemSize(unsigned shMemSz_);
+	inline unsigned sharedMemSize() const { return _shMemSz; }
+
+	void setStream(cudaStream_t stream_);
+	inline cudaStream_t stream() const { return _stream; }
 };
 
 /// Sets up a CUDA session and preallocates device memory and streams

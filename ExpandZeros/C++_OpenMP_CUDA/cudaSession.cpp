@@ -13,6 +13,36 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 
 using namespace std;
 
+KernelLaunchConfig::KernelLaunchConfig(unsigned blocksCount_/* = 1U*/,
+									   unsigned threadsPerBlock_/* = 32U*/,
+									   unsigned shMemSz_/* = 0U*/,
+									   cudaStream_t stream_/* = nullptr*/) {
+	setBlocksCount(blocksCount_);
+	setThreadsPerBlock(threadsPerBlock_);
+	setSharedMemSize(shMemSz_);
+	setStream(stream_);
+}
+
+void KernelLaunchConfig::setBlocksCount(unsigned blocksCount_) {
+	if(blocksCount_ == 0U)
+		throw invalid_argument(__FUNCTION__ " expects blocksCount_ > 0!");
+	_blocksCount = blocksCount_;
+}
+
+void KernelLaunchConfig::setThreadsPerBlock(unsigned threadsPerBlock_) {
+	if(threadsPerBlock_ == 0U || threadsPerBlock_ % 32U != 0U)
+		throw invalid_argument(__FUNCTION__ " expects threadsPerBlock_ to be > 0 and a multiple of 32 !");
+	_threadsPerBlock = threadsPerBlock_;
+}
+
+void KernelLaunchConfig::setSharedMemSize(unsigned shMemSz_) {
+	_shMemSz = shMemSz_;
+}
+
+void KernelLaunchConfig::setStream(cudaStream_t stream_) {
+	_stream = stream_;
+}
+
 CudaSession::CudaSession() {
 	cudaDeviceProp props;
 	props.asyncEngineCount = 1; // expecting >= 1
