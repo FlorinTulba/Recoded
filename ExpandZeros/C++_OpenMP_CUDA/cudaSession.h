@@ -120,6 +120,7 @@ class CudaSession {
 protected:
 	void* reservedDevMem = nullptr;	///< memory area preallocated on the device
 	std::vector<cudaStream_t> reservedStreams; ///< user preallocated streams
+	std::vector<cudaEvent_t> reservedEvents; ///< user preallocated events
 
 public:
 	CudaSession(); ///< sets the current device
@@ -130,20 +131,29 @@ public:
 	/// Creates a new stream with given flags and priority
 	cudaStream_t createStream(unsigned flags = cudaStreamDefault, int priority = 0);
 
-	/// Destroys all streams
-	void destroyStreams();
+	/// Creates a new event with given flags
+	cudaEvent_t createEvent(unsigned flags = cudaEventDefault);
 
 	/// Releases the reserved device memory
 	void releaseDevMem();
 
-	/// @return the available streams
-	const std::vector<cudaStream_t>& getReservedStreams() const;
+	/// Destroys all streams
+	void destroyStreams();
+
+	/// Destroys all events
+	void destroyEvents();
 
 	/// @return the reserved memory, if any, reinterpreting it as char*
 	char* getReservedMem() const;
 
+	/// @return the available streams
+	const std::vector<cudaStream_t>& getStreamsPool() const;
+
+	/// @return the available events
+	const std::vector<cudaEvent_t>& getEventsPool() const;
+
 	/**
-	Releases any device memory and user streams and calls cudaDeviceReset().
+	Releases any device memory, user streams and user events and calls cudaDeviceReset().
 
 	cudaDeviceReset() must be called before exiting in order for profiling and
 	tracing tools such as Nsight and Visual Profiler to show complete traces.

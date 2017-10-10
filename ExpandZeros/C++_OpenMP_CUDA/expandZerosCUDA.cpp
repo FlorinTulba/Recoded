@@ -64,9 +64,10 @@ extern void reportAndExpandZerosOpenMP(int *a, long m, long n,
 Here are the ideas behind the adopted solution:
 
 - let the GPU mark rows and columns containing value 0 from the top of the matrix
-- let the CPU process the rest of the matrix
+- let the CPU process the rest of the matrix and update the columns it detected
+	even in the top part of the matrix
 - when the GPU reports the found rows and columns in the top part of the matrix,
-	the CPU needs to update any additionally detected row / column
+	the CPU needs to set the remaining extra columns and all the newly identified rows
 */
 void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 							  int *a, unsigned m, unsigned n,
@@ -76,6 +77,7 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 	// Compute how many rows to be computed on GPU
 	const size_t mDev = (size_t)ceil(m * workQuotaGPU);
 	if(mDev * n < minElemsForGPU) { // Don't use the GPU for only a few elements. Use OpenMP instead
+		memset((void*)resultsHost, 0, size_t(m + n));
 		reportAndExpandZerosOpenMP(a, (long)m, (long)n, &resultsHost[(size_t)n], resultsHost);
 		return;
 	}
@@ -84,6 +86,9 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 	// uses char, as its sizeof is 1, so it's easier to compute the offsets
 	char* devMem = cudaSession.getReservedMem();
 	assert(devMem != nullptr);
+	const vector<cudaEvent_t> &evts = cudaSession.getEventsPool();
+	assert(!evts.empty());
+	cudaEvent_t host2DevCopyDone = evts.front();
 
 	const unsigned elemsDevA = (unsigned)mDev * n; // the elements assigned to the GPU
 	const size_t szDevA = size_t(elemsDevA) * sizeof(int);
@@ -96,7 +101,7 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 
 	// Copy the assigned part from the input matrix from host to device
 	CHECK_CUDA_OP(cudaMemcpyAsync((void*)devA, a, szDevA, cudaMemcpyHostToDevice));
-
+	CHECK_CUDA_OP(cudaEventRecord(host2DevCopyDone));
 	// Initialize the rows (from the device) to be reported as containing original zeros.
 	// Columns don't need initialization, as each element is appropriately set by the kernel
 	CHECK_CUDA_OP(cudaMemsetAsync((void*)devFoundRows, 0, mDev * sizeof(bool)));
@@ -119,14 +124,23 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 	reportAndExpandZerosOpenMP(&a[(size_t)elemsDevA], (long)m - (long)mDev, (long)n,
 							   foundRowsCpu, foundColsCpu.get());
 
+	// Update the identified columns even from the part assigned to the GPU (after the GPU gets the input data)
+	CHECK_CUDA_OP(cudaEventSynchronize(host2DevCopyDone));
+	ColRanges colRanges;
+	buildColRanges(colRanges, foundColsCpu.get(), (size_t)n);
+	for(size_t r = 0ULL; r < mDev; ++r)
+		clearColRangesFromRow(colRanges, &a[size_t(r * n)]);
+
+	// Wait for the rows and columns containing value 0
+	// that were identified by the GPU in the top part of the matrix
 	CHECK_CUDA_OP(cudaStreamSynchronize(nullptr));
 	bool * const foundCols = resultsHost,
 		*const foundRows = &resultsHost[(size_t)n];
 	const size_t bytesPerRow = sizeof(int) * (size_t)n;
 
 	// Apply the findings reported by the GPU:
-	// - merge the columns and update the upper part of the matrix (both rows and columns)
-	// - update only the extra columns spotted by GPU from the lower part of matrix
+	// - update only the extra columns spotted by GPU from the entire matrix
+	// - update the rows in the upper part of the matrix
 	vector<unsigned> extraColumns;
 	extraColumns.reserve((size_t)n);
 	for(size_t c = 0ULL; c < (size_t)n; ++c) {
@@ -138,9 +152,6 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 			extraColumns.push_back((unsigned)c);
 	}
 
-	ColRanges colRanges;
-	buildColRanges(colRanges, foundCols, (size_t)n);
-
 	size_t r = 0ULL;
 	for(; r < mDev; ++r) {
 		int * const rowStart = &a[size_t(r * n)];
@@ -150,7 +161,8 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 		if(foundRows[(size_t)r])
 			memset((void*)rowStart, 0, bytesPerRow);
 		else
-			clearColRangesFromRow(colRanges, rowStart);
+			for(unsigned c : extraColumns)
+				rowStart[(size_t)c] = 0;
 	}
 
 	if(!extraColumns.empty())

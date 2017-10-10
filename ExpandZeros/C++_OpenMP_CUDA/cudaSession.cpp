@@ -76,11 +76,11 @@ cudaStream_t CudaSession::createStream(unsigned flags/* = cudaStreamDefault*/, i
 	return newStream;
 }
 
-void CudaSession::destroyStreams() {
-	for(const cudaStream_t s : reservedStreams)
-		CHECK_CUDA_OP(cudaStreamDestroy(s));
-
-	reservedStreams.clear();
+cudaEvent_t CudaSession::createEvent(unsigned flags/* = cudaEventDefault*/) {
+	cudaEvent_t evt;
+	CHECK_CUDA_OP(cudaEventCreateWithFlags(&evt, flags));
+	reservedEvents.push_back(evt);
+	return evt;
 }
 
 void CudaSession::releaseDevMem() {
@@ -90,16 +90,35 @@ void CudaSession::releaseDevMem() {
 	}
 }
 
-const vector<cudaStream_t>& CudaSession::getReservedStreams() const {
-	return reservedStreams;
+void CudaSession::destroyStreams() {
+	for(const cudaStream_t s : reservedStreams)
+		CHECK_CUDA_OP(cudaStreamDestroy(s));
+
+	reservedStreams.clear();
+}
+
+void CudaSession::destroyEvents() {
+	for(const cudaEvent_t e : reservedEvents)
+		CHECK_CUDA_OP(cudaEventDestroy(e));
+
+	reservedEvents.clear();
 }
 
 char* CudaSession::getReservedMem() const {
 	return (char*)reservedDevMem;
 }
 
+const vector<cudaStream_t>& CudaSession::getStreamsPool() const {
+	return reservedStreams;
+}
+
+const vector<cudaEvent_t>& CudaSession::getEventsPool() const {
+	return reservedEvents;
+}
+
 CudaSession::~CudaSession() {
 	releaseDevMem();
 	destroyStreams();
+	destroyEvents();
 	CHECK_CUDA_OP(cudaDeviceReset());
 }

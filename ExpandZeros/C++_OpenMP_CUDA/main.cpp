@@ -194,6 +194,7 @@ void main() {
 
 		CudaSession cudaSession;
 		cudaSession.reserveDevMem(dimAMaxPadded + dimResults);
+		cudaSession.createEvent(cudaEventBlockingSync | cudaEventDisableTiming);
 
 		random_device rd;
 		mt19937 randGen(rd());
@@ -268,6 +269,7 @@ void main() {
 		timerOpenMP.done();
 
 		cudaSession.releaseDevMem(); // optional
+		cudaSession.destroyEvents(); // optional
 
 	} catch(invalid_argument &e) {
 		cerr<<e.what()<<endl;
