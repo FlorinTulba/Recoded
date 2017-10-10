@@ -117,8 +117,16 @@ const vector<cudaEvent_t>& CudaSession::getEventsPool() const {
 }
 
 CudaSession::~CudaSession() {
-	releaseDevMem();
-	destroyStreams();
-	destroyEvents();
-	CHECK_CUDA_OP(cudaDeviceReset());
+	try {
+		releaseDevMem();
+	} catch(runtime_error&) {}
+	try {
+		destroyStreams();
+	} catch(runtime_error&) {}
+	try {
+		destroyEvents();
+	} catch(runtime_error&) {}
+	try {
+		CHECK_CUDA_OP(cudaDeviceReset());
+	} catch(runtime_error&) {}
 }

@@ -19,7 +19,18 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 using namespace std;
 
 namespace {
-	const int processorsCount = omp_get_num_procs();
+	/// Initialization and details for OpenMP
+	struct OpenMP_session {
+		/// Provides the number of CPU-s from the system
+		const int processorsCount = omp_get_num_procs();
+
+		/// Ensures no nested parallelism
+		OpenMP_session() {
+			if(omp_get_nested())
+				omp_set_nested(0);
+		}
+	};
+	const OpenMP_session ompSession;
 
 	// Don't initialize the singleton and read the value within reportAndExpandZerosOpenMP,
 	// as this shouldn't be timed
@@ -36,7 +47,7 @@ void reportAndExpandZerosOpenMP(int *a, long m, long n,
 	// as it also needs to wait for the created threads
 	const int rowsPerThread =
 		(int)min((double)m,
-				ceil(max((double)m / processorsCount,
+				ceil(max((double)m / ompSession.processorsCount,
 						minElemsPerThread / (double)n)));
 	const int requiredThreads = (int)ceil(m / (double)rowsPerThread);
 	if(requiredThreads > 1) { // multi-threaded region using `localFoundCols`	

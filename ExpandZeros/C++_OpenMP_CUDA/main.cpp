@@ -27,7 +27,6 @@ Implementations using OpenMP and CUDA for NVIDIA GPUs.
 #include <iterator>
 #include <fstream>
 #include <random>
-#include <omp.h>
 
 using namespace std;
 
@@ -57,6 +56,9 @@ const map<string, const unique_ptr<IConfigItem>>& Config::props() {
 }
 
 namespace {
+	random_device rd;
+	mt19937 randGen(rd());
+
 	/**
 	Randomly initializes a matrix with elements in 0..1000 range.
 
@@ -68,13 +70,11 @@ namespace {
 	@param checkCols reports which columns contain elements equal to 0
 	*/
 	void initMat(int *a, size_t m, size_t n, size_t dimA,
-						vector<bool> &checkRows, vector<bool> &checkCols) {
+				 vector<bool> &checkRows, vector<bool> &checkCols) {
 		assert(nullptr != a && dimA > 0ULL && dimA == m * n);
 
 		static const double origZerosPercentage =
 			Config::get().valueOf(ConfigItem<double>("ZerosPercentage"), .04);
-		static random_device rd;
-		static mt19937 randGen(rd());
 		static uniform_int_distribution<> uidVal(1, 1000);
 
 		checkRows.clear(); checkRows.resize(m, false);
@@ -178,104 +178,93 @@ namespace {
 } // anonymous namespace
 
 /// Compares the performances of the OpenMP vs CUDA implementations
-void main() {
-	if(omp_get_nested())
-		omp_set_nested(0); // Ensure no nested parallelism
+void main() try {
+	const Config &cfg = Config::get();		
+	const size_t TIMES = cfg.valueOf(ConfigItem<size_t>("TIMES"), 1000ULL), // iterations count
+		mMax = cfg.valueOf(ConfigItem<size_t>("mMax"), 500ULL), // max matrix height
+		nMax = cfg.valueOf(ConfigItem<size_t>("nMax"), 500ULL), // max matrix width
+		dimResults = (mMax + nMax) * sizeof(bool), // sum of the sizes of the arrays for found zeros on rows / columns
+		maxElemsA = mMax*nMax, // max matrix elements
+		dimAMax = maxElemsA * sizeof(int), // max size of the matrix
+		dimAMaxPadded = nextMultipleOf<256ULL>(dimAMax); // padded size of the largest matrix
 
-	try {
-		const Config &cfg = Config::get();		
-		const size_t TIMES = cfg.valueOf(ConfigItem<size_t>("TIMES"), 1000ULL), // iterations count
-			mMax = cfg.valueOf(ConfigItem<size_t>("mMax"), 500ULL), // max matrix height
-			nMax = cfg.valueOf(ConfigItem<size_t>("nMax"), 500ULL), // max matrix width
-			dimResults = (mMax + nMax) * sizeof(bool), // sum of the sizes of the arrays for found zeros on rows / columns
-			maxElemsA = mMax*nMax, // max matrix elements
-			dimAMax = maxElemsA * sizeof(int), // max size of the matrix
-			dimAMaxPadded = nextMultipleOf<256ULL>(dimAMax); // padded size of the largest matrix
+	uniform_int_distribution<size_t>
+		mRand(15, mMax-1), nRand(15, nMax-1);
 
-		CudaSession cudaSession;
-		cudaSession.reserveDevMem(dimAMaxPadded + dimResults);
-		cudaSession.createEvent(cudaEventBlockingSync | cudaEventDisableTiming);
-
-		random_device rd;
-		mt19937 randGen(rd());
-		uniform_int_distribution<size_t>
-			mRand(15, mMax-1), nRand(15, nMax-1);
-
-		// Aligned allocation helps preventing false sharing in the OpenMP algorithm version
-		AlignedMemRAII<int> origMat(ArrayRequest(maxElemsA), l1CacheLineSz());
+	// Aligned allocation helps preventing false sharing in the OpenMP algorithm version
+	AlignedMemRAII<int> origMat(ArrayRequest(maxElemsA), l1CacheLineSz());
 		
-		char *hostMem = nullptr;
-		CudaRAII<void*> pinnedHostMem(function<cudaError_t(void**, size_t)>(::cudaMallocHost),
-									  ::cudaFreeHost,
-									  (void*&)hostMem,
-									  dimAMaxPadded + dimResults);
+	char *hostMem = nullptr;
+	CudaRAII<void*> pinnedHostMem(function<cudaError_t(void**, size_t)>(::cudaMallocHost),
+									::cudaFreeHost,
+									(void*&)hostMem,
+									dimAMaxPadded + dimResults);
 
-		int *a = (int*)hostMem;
-		bool *results = (bool*)&hostMem[dimAMaxPadded],
-			*foundCols = results; // foundCols is always at the beginning of the results
-		// foundRows will be right after foundCols, which depends on the width of the matrix from each test
+	int *a = (int*)hostMem;
+	bool *results = (bool*)&hostMem[dimAMaxPadded],
+		*foundCols = results; // foundCols is always at the beginning of the results
+	// foundRows will be right after foundCols, which depends on the width of the matrix from each test
 
-		// Testing TIMES matrices of random sizes and with random elements
-		// The timers must ignore TIMES, as the size of the matrix is different for each iteration
-		// and only the average required time per element does makes sense in this case
-		Timer timerCUDA("timerCUDA", 1ULL, false), timerOpenMP("timerOpenMP", 1ULL, false);
-		size_t totalElems = 0ULL; // Count of the analyzed elements of all matrices from all iterations
+	// Testing TIMES matrices of random sizes and with random elements
+	// The timers must ignore TIMES, as the size of the matrix is different for each iteration
+	// and only the average required time per element does makes sense in this case
+	Timer timerCUDA("timerCUDA", 1ULL, false), timerOpenMP("timerOpenMP", 1ULL, false);
+	size_t totalElems = 0ULL; // Count of the analyzed elements of all matrices from all iterations
 		
-		vector<bool> checkRows, checkCols; // Correct rows / columns containing values of 0
-		for(int i = 0; i < TIMES; ++i) {
-			// Init random dimensions and matrix
-			const size_t m = mRand(randGen),
-				n = nRand(randGen),
-				dimMat = m * n;
-			totalElems += dimMat;
-			initMat(origMat.get(), m, n, dimMat, checkRows, checkCols);
+	vector<bool> checkRows, checkCols; // Correct rows / columns containing values of 0
+	for(int i = 0; i < TIMES; ++i) {
+		// Init random dimensions and matrix
+		const size_t m = mRand(randGen),
+			n = nRand(randGen),
+			dimMat = m * n;
+		totalElems += dimMat;
+		initMat(origMat.get(), m, n, dimMat, checkRows, checkCols);
 
-			// copy the original to be modified by the CUDA algorithm version
-			memcpy_s((void*)a, dimAMax,
-					 (const void*)origMat.get(), dimMat * sizeof(int));
+		// copy the original to be modified by the CUDA algorithm version
+		memcpy_s((void*)a, dimAMax,
+					(const void*)origMat.get(), dimMat * sizeof(int));
 
-			// Expand the zeros from the matrix while timing the operation
-			timerCUDA.resume();
-			reportAndExpandZerosCUDA(cudaSession, a, (unsigned)m, (unsigned)n, results);
-			timerCUDA.pause();
+		// Expand the zeros from the matrix while timing the operation
+		timerCUDA.resume();
+		reportAndExpandZerosCUDA(a, (unsigned)m, (unsigned)n, results);
+		timerCUDA.pause();
 
-			bool *foundRows = &results[n];
+		bool *foundRows = &results[n];
 
-			// Validate result
-			assert(same(foundRows, checkRows));
-			assert(same(foundCols, checkCols));
+		// Validate result
+		assert(same(foundRows, checkRows));
+		assert(same(foundCols, checkCols));
 
-			// Test using OpenMP
-			clearFound(results, m + n);
+		// Test using OpenMP
+		clearFound(results, m + n);
 
-			// Expand the zeros directly from the original matrix while timing the operation
-			timerOpenMP.resume();
-			reportAndExpandZerosOpenMP(origMat.get(), (long)m, (long)n, foundRows, foundCols);
-			timerOpenMP.pause();
+		// Expand the zeros directly from the original matrix while timing the operation
+		timerOpenMP.resume();
+		reportAndExpandZerosOpenMP(origMat.get(), (long)m, (long)n, foundRows, foundCols);
+		timerOpenMP.pause();
 
-			// Validate result
-			assert(same(foundRows, checkRows));
-			assert(same(foundCols, checkCols));
-		}
-
-		cout<<"Total time CUDA: "<<timerCUDA.elapsed()<<"s for "<<totalElems<<" elements in "
-			<<TIMES<<" matrices, which means "<<timerCUDA.elapsed() * 1e9 / totalElems
-			<<"ns/element"<<endl;
-		cout<<"Total time OpenMP: "<<timerOpenMP.elapsed()<<"s for "<<totalElems<<" elements in "
-			<<TIMES<<" matrices, which means "<<timerOpenMP.elapsed() * 1e9 / totalElems
-			<<"ns/element"<<endl;
-
-		timerCUDA.done();
-		timerOpenMP.done();
-
-		cudaSession.releaseDevMem(); // optional
-		cudaSession.destroyEvents(); // optional
-
-	} catch(invalid_argument &e) {
-		cerr<<e.what()<<endl;
-	} catch(logic_error &e) {
-		cerr<<e.what()<<endl;
-	} catch(runtime_error &e) {
-		cerr<<e.what()<<endl;
+		// Validate result
+		assert(same(foundRows, checkRows));
+		assert(same(foundCols, checkCols));
 	}
+
+	cout<<"Total time CUDA: "<<timerCUDA.elapsed()<<"s for "<<totalElems<<" elements in "
+		<<TIMES<<" matrices, which means "<<timerCUDA.elapsed() * 1e9 / totalElems
+		<<"ns/element"<<endl;
+	cout<<"Total time OpenMP: "<<timerOpenMP.elapsed()<<"s for "<<totalElems<<" elements in "
+		<<TIMES<<" matrices, which means "<<timerOpenMP.elapsed() * 1e9 / totalElems
+		<<"ns/element"<<endl;
+
+	timerCUDA.done();
+	timerOpenMP.done();
+
+} catch(exception &e) {
+	/*
+	e might be:
+	- invalid_argument when instantiating Config
+	- logic_error issued when violating preconditions or common sense facts
+	- runtime_error thrown when a certain critical information cannot be obtained
+		or when a critical operation cannot be performed
+	*/
+	cerr<<e.what()<<endl;
 }

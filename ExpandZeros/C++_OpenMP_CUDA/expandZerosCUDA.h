@@ -21,8 +21,7 @@ Expands the zeros from a[m x n]
 Sets on true the indices from foundRows and foundCols where the original zeros were found.
 foundCols starts at results; foundRows starts at results + n
 */
-void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
-							  int *a, unsigned m, unsigned n,
+void reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 							  bool *results);
 
 /**

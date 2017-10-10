@@ -14,6 +14,67 @@ Implementation s using OpenMP and CUDA for NVIDIA GPUs.
 using namespace std;
 
 namespace {
+	/// Configures the CudaSession required by this algorithm
+	struct CudaSessionConfig {
+		void* memPool;
+		cudaEvent_t host2DevCopyDone = nullptr;
+
+	protected:
+		CudaSession session; ///< actual CUDA session object
+
+		CudaSessionConfig()
+			try : session() {
+			const Config &cfg = Config::get();
+			const size_t
+				mMax = cfg.valueOf(ConfigItem<size_t>("mMax"), 500ULL), // max matrix height
+				nMax = cfg.valueOf(ConfigItem<size_t>("nMax"), 500ULL), // max matrix width
+				dimResults = (mMax + nMax) * sizeof(bool), // sum of the sizes of the arrays for found zeros on rows / columns
+				maxElemsA = mMax*nMax, // max matrix elements
+				dimAMax = maxElemsA * sizeof(int), // max size of the matrix
+				dimAMaxPadded = nextMultipleOf<256ULL>(dimAMax); // padded size of the largest matrix
+
+			// Pre-allocates device memory for largest allowed matrix plus for the associated output arrays
+			memPool = session.reserveDevMem(dimAMaxPadded + dimResults);
+
+			// Creates an event for signaling when the GPU has obtained its part of the input matrix,
+			// so that the CPU can update that part of the matrix safely
+			host2DevCopyDone = session.createEvent(cudaEventBlockingSync | cudaEventDisableTiming);
+
+		} catch(exception &e) {
+			/*
+			e might be:
+			- invalid_argument when instantiating Config
+			- logic_error issued by session.reserveDevMem
+			- runtime_error issued by any session related operation
+			*/
+			cerr<<e.what()<<endl;
+			throw;
+		}
+
+		CudaSessionConfig(const CudaSessionConfig&) = delete;
+		CudaSessionConfig(CudaSessionConfig&&) = delete;
+		void operator=(const CudaSessionConfig&) = delete;
+		void operator=(CudaSessionConfig&&) = delete;
+
+	public:
+		~CudaSessionConfig() {
+			try {
+				session.releaseDevMem(); // optional
+			} catch(runtime_error&) {}
+			try {
+				session.destroyEvents(); // optional
+			} catch(runtime_error&) {}
+		}
+
+		/// @return the singleton
+		static const CudaSessionConfig& get() {
+			static CudaSessionConfig result;
+			return result;
+		}
+	};
+
+	const CudaSessionConfig &cudaCfg = CudaSessionConfig::get();
+
 	// Don't initialize the singleton and read the value within reportAndExpandZerosCUDA,
 	// as this shouldn't be timed
 	const size_t minElemsForGPU = Config::get().valueOf(ConfigItem<size_t>("MinElemsForGPU"), 0ULL);
@@ -69,8 +130,7 @@ Here are the ideas behind the adopted solution:
 - when the GPU reports the found rows and columns in the top part of the matrix,
 	the CPU needs to set the remaining extra columns and all the newly identified rows
 */
-void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
-							  int *a, unsigned m, unsigned n,
+void reportAndExpandZerosCUDA(int *a, unsigned m, unsigned n,
 							  bool *resultsHost) {
 	assert(nullptr != a && m > 0U && n > 0U && nullptr != resultsHost);
 
@@ -84,11 +144,10 @@ void reportAndExpandZerosCUDA(const CudaSession &cudaSession,
 
 	// device memory that covers the assigned part of the input matrix and the 2 output vectors
 	// uses char, as its sizeof is 1, so it's easier to compute the offsets
-	char* devMem = cudaSession.getReservedMem();
+	char* devMem = (char*)cudaCfg.memPool;
 	assert(devMem != nullptr);
-	const vector<cudaEvent_t> &evts = cudaSession.getEventsPool();
-	assert(!evts.empty());
-	cudaEvent_t host2DevCopyDone = evts.front();
+	cudaEvent_t host2DevCopyDone = cudaCfg.host2DevCopyDone;
+	assert(host2DevCopyDone != nullptr);
 
 	const unsigned elemsDevA = (unsigned)mDev * n; // the elements assigned to the GPU
 	const size_t szDevA = size_t(elemsDevA) * sizeof(int);
